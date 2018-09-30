@@ -1,0 +1,19 @@
+<h5 class="bg-light text-dark">
+	Заказы
+</h5>
+<div class="row context_injected_orders" data-ctx0="orders-state">
+	<div class="col-1 smallRightPadding">
+		<a href="#" class="state" ng-click="$ctrl.state()" data-state0="Arhivnyi" data-state0-val="0" data-state1="Zavershyon" data-state1-val="0">Рабочие</a>
+	</div>
+	<div class="col-1">
+		<a href="#" class="state aspect_inject_deleteOrder" ng-click="$ctrl.state()" data-state0="Arhivnyi"  data-state0-val="1" data-state1="Zavershyon" data-state1-val="1">Архив</a>
+	</div>
+	<div class="col-1">
+		<a href="#" class="state" ng-click="$ctrl.state()" data-state0="Arhivnyi"  data-state0-val="0" data-state1="Zavershyon" data-state1-val="0" data-aspect0="newOrder">Добавить</a>
+	</div>
+</div>
+<div data-ctx0="orders" data-state0="ctx:userId" data-state0-val="{{$ctrl.userId}}">
+	<order-detail ng-repeat="hero in $ctrl.list" hero="hero" on-delete="$ctrl.deleteHero(hero)" 
+		on-update="$ctrl.updateHero(hero, prop, value)">
+	</order-detail>
+</div>

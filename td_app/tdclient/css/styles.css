@@ -1,0 +1,33 @@
+.smallPadding {
+	padding-left: 7px;
+	padding-right: 5px;
+}
+
+.smallRightPadding {
+	padding-right: 5px;
+}
+
+.editFieldInput {
+	width: 100%;
+}
+
+.noBottomMargin {
+	margin-bottom: 0px;
+}
+
+.authSubmit {
+	position: absolute;
+	z-index:5;
+	top: 50px;
+	right: 50px;
+	width: 200px;
+	height: 100px;
+}
+
+.authSubmit a {
+	background-color: #fff;
+    padding: 4px;
+    line-height: 35px;
+    border-radius: 7px;
+    text-align: right;
+}

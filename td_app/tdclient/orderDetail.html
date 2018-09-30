@@ -1,0 +1,32 @@
+<hr>
+<div>
+	<div class="row" data-ctx0="order">
+		<div class="col-2 smallRightPadding">
+			<img src="images/AddingCustBitmap.png"/>
+			<span style="min-width:10px;">
+				{{$ctrl.hero.Nomer_zakaza}} 
+				{{$ctrl.hero.Adres_okonchaniya_zayavki && 'А#00' + $ctrl.hero.Adres_okonchaniya_zayavki}}
+			</span>
+		</div>
+		<div class="col-2 smallPadding">
+			<edit-field field-value="$ctrl.hero.Telefon_klienta" field-name="Telefon_klienta" field-type="text" field-id="{{$ctrl.hero.BOLD_ID}}" on-update="$ctrl.update('phone', value)"></edit-field>
+		</div>
+		<div class="col-2 smallPadding">
+			<edit-field field-value="$ctrl.hero.Adres_vyzova_vvodim" field-name="Adres_vyzova_vvodim" field-type="text" field-id="{{$ctrl.hero.BOLD_ID}}" on-update="$ctrl.update('adres', value)"></edit-field>
+		</div>
+		<div class="col-1 smallPadding">{{$ctrl.hero.start_dt}}</div>
+		<div class="col-1 smallPadding">{{$ctrl.hero.Pozyvnoi_ustan}}</div>
+		<div class="col-1 smallPadding">{{$ctrl.hero.Uslovn_stoim}}</div>
+		<div class="col-1 smallPadding">{{$ctrl.hero.order_sect}}</div>
+		<div class="col-2 smallPadding">
+			<!--<edit-field field-value="$ctrl.hero.order_sect"  field-name="order_sect" field-type="text" on-update="$ctrl.update('sector', value)"></edit-field>-->
+			{{$ctrl.hero.remoteOrderStatusInfo}}
+		</div>
+		<div class="col-1 smallPadding">
+			<a class="state" href="#" ng-click="$ctrl.state()" data-injected-aspect0="deleteOrder" data-state0-val="{{$ctrl.hero.BOLD_ID}}">Удалить</a>
+		</div>
+	</div>
+	
+	<!-- Order Tabs  -->
+	<order-tabs></order-tabs>
+</div>
