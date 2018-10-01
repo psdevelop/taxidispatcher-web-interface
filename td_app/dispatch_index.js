@@ -961,7 +961,7 @@ io.sockets.on('connection', function (socket) {
 	});
 
 	var newOrder = function (data) {
-		queryRequest('EXEC	[dbo].[InsertOrderWithParamsRClientEx] @adres = N\'\', @enadres = N\'\',@phone = N\'-\',' +
+		queryRequest('EXEC	[dbo].[InsertOrderWithParamsRClientEx] @adres = N\'\', @enadres = N\'\',@phone = N\'000\',' +
 				'@disp_id = -1, @status = 0, @color_check = 0, @op_order = 0, @gsm_detect_code = 0,' +
 				'@deny_duplicate = 0, @colored_new = 0, @ab_num = N\'\', @client_id = -1, @ord_num = 0,@order_id = 0',
 						function (recordset) {

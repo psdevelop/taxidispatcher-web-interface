@@ -21,9 +21,10 @@
 		<div class="col-2 smallPadding">
 			<!--<edit-field field-value="$ctrl.hero.order_sect"  field-name="order_sect" field-type="text" on-update="$ctrl.update('sector', value)"></edit-field>-->
 			{{$ctrl.hero.remoteOrderStatusInfo}}
+			<a class="state actionItem" href="#" ng-click="$ctrl.state()" data-injected-aspect0="deleteOrder" data-state0-val="{{$ctrl.hero.BOLD_ID}}">Удалить</a>
 		</div>
 		<div class="col-1 smallPadding">
-			<a class="state" href="#" ng-click="$ctrl.state()" data-injected-aspect0="deleteOrder" data-state0-val="{{$ctrl.hero.BOLD_ID}}">Удалить</a>
+			
 		</div>
 	</div>
 	
