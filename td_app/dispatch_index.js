@@ -11,7 +11,8 @@ var http = require('http'),
 		saveUninitialized: true,
 		cookie: { maxAge: 60000 }
 	}),
-	socketsParams = {};
+	socketsParams = {},
+	custom = require('./dispatch_custom');
 	//sharedsession = require("express-socket.io-session");
 
 //({
@@ -201,7 +202,8 @@ var sql = require('mssql');
 var clientsLimit = 50;
 var clientsCount = 0;
 
-var config = {
+var config = custom.config;
+/*{
 	user: 'disp_server',
 	password: 'disp_server',
 	server: 'localhost\\SQLEXPRESS', // You can use 'localhost\\instance' to connect to named instance
@@ -210,7 +212,7 @@ var config = {
 	options: {
 		encrypt: false // Use this if you're on Windows Azure
 	}
-}
+}*/
 
 function findClientsSocket(roomId, namespace) {
 	var res = [],
@@ -945,16 +947,16 @@ io.sockets.on('connection', function (socket) {
 	}
 
 	socket.on('status', function (data) {
-		console.log(data);
-		console.log("=======");
-		console.log(typeof data);
-		if (typeof data === 'string') {
-			tp = tryParseJSON(data);
-			console.log("=======");
-			console.log(tp);
-			if (tp)
-				data = tp;
-		}
+		//console.log(data);
+		//console.log("=======");
+		//console.log(typeof data);
+		//if (typeof data === 'string') {
+		//	tp = tryParseJSON(data);
+		//	console.log("=======");
+		//	console.log(tp);
+		//	if (tp)
+		//		data = tp;
+		//}
 
 		requestAndSendStatus(connection, data.cid);
 		console.log("Status request: " + JSON.stringify(data));

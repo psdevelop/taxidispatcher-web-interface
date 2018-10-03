@@ -1,9 +1,16 @@
 (function() {
-  var app = angular.module('gemStore', ['btford.socket-io','store-directives']).
+	var parser = document.createElement('a');
+        parser.href = window.location;
+		
+	//console.log(window.location);
+	//console.log(parser.protocol + '//' + parser.hostname + ':' + parser.port + '/');
+	
+	var socketUrl = parser.protocol + '//' + parser.hostname + ':' + parser.port + '/',
+	app = angular.module('gemStore', ['btford.socket-io','store-directives']).
 	factory('injectedSocket', function (socketFactory) {
 		return socketFactory({
 			prefix: '',
-			ioSocket: io.connect('http://127.0.0.1:8085')
+			ioSocket: io.connect(socketUrl) //'http://127.0.0.1:8085'
 		});
 	})
 	.factory('ascInterface', function (injectedSocket) {
