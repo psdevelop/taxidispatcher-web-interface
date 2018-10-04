@@ -40,48 +40,167 @@ var io = require('socket.io')(server);  //pass a http.Server instance
 server.listen(8085);
 console.log('Сервер диспетчерских приложений TaxiDispatcher запущен на порту 8085...');
 
-/*var AmiIo = require("ami-io"),
-        SilentLogger = new AmiIo.SilentLogger(), //use SilentLogger if you just want remove logs
-        amiio = AmiIo.createClient({
-			port:5038, 
-			host:'91.193.223.21', 
-			login:'radminnode', 
-			password:'jm75jxm67n9nn4o85', 
-			encoding: 'ascii'
+var sql = require('mssql');
+var clientsLimit = 50;
+var clientsCount = 0;
+
+var config = custom.config;
+
+(function() {
+	if (!custom.useAMIClient) {
+		console.log('AMI-client disable.');
+		return;
+	}
+
+	var connectionAMI, createConnection = function() {
+			connectonAttempts++;
+			if (connectonAttempts > 5) {
+				return;
+			}
+
+			connectionAMI = createAMIDBConnPool(
+				config,
+				function() {
+					console.log('Success db-connection of ami module!');
+					initAMI();
+				}
+			);
+		}, connectonAttempts = 0;
+
+	createConnection();
+	
+	function createAMIDBConnPool(connConfig, callBack) {
+		return new sql.ConnectionPool(connConfig, function (err) {
+			// ... error checks
+			if (err) {
+				console.log('Err of create ami db pool' + err.message);                      // Canceled.
+				console.log(err.code);
+				console.log('Next connection attempt after 60 sec...');
+				setTimeout(createConnection, 60000);
+			} else {
+				callBack && callBack();
+			}
 		});
-        //amiio2 = new AmiIo.Client({ logger: SilentLogger });
-		amiio.useLogger(SilentLogger);
+	}
+	
+	function findOrderByPhone(phone, callback) {
+		queryRequest('SELECT TOP 1 ord.BOLD_ID, (CAST(dr.avar1 as varchar(20)) + \',\' + CAST(dr.avar2 as varchar(20)) + \',\' + CAST(dr.avar3 as varchar(20)) + \',\' + CAST(dr.avar4 as varchar(20)) + \',\' + CAST(dr.avar5 as varchar(20)) + \',\' + CAST(dr.avar6 as varchar(20)) + \',\' + CAST(dr.avar7 as varchar(20)) + \',\' + CAST(dr.avar8 as varchar(20)) + \',\' + CAST(dr.avar9 as varchar(20)) + \',\') as vids FROM Zakaz ord INNER JOIN Voditelj dr ON ord.vypolnyaetsya_voditelem = dr.BOLD_ID WHERE   \'' + phone + '\' LIKE (\'%\' + ord.Telefon_klienta + \'%\') AND REMOTE_SET >= 0 AND REMOTE_SET <=8 AND Zavershyon = 0 AND Arhivnyi = 0;',
+			function (recordset) {
+				if (recordset && recordset.recordset &&
+					recordset.recordset.length) {
+					var vids = recordset.recordset[0].vids;
+					callback(vids);
+				}
+			},
+			function (err) {
+				console.log('Err of findOrderByPhone! ' + err);
+			},
+			connectionAMI
+		);
+	}
+	
+	function initAMI() {
+		var AmiIo = require("ami-io"),
+			SilentLogger = new AmiIo.SilentLogger(), //use SilentLogger if you just want remove logs
+			amiio = AmiIo.createClient(custom.amiConfig);
+			//amiio2 = new AmiIo.Client({ logger: SilentLogger });
+			amiio.useLogger(SilentLogger);
 
-    //Both of this are similar
+		//Both of this are similar
 
-    amiio.on('incorrectServer', function () {
-        amiio.logger.error("Invalid AMI welcome message. Are you sure if this is AMI?");
-        //process.exit();
-    });
-    amiio.on('connectionRefused', function(){
-        amiio.logger.error("Connection refused.");
-        //process.exit();
-    });
-    amiio.on('incorrectLogin', function () {
-        amiio.logger.error("Incorrect login or password.");
-        //process.exit();
-    });
-    amiio.on('event', function(event){
-		var eventName = event.event;
-		if (['Newexten', 
-			'VarSet', 
-			'InvalidAccountID', 
-			'SuccessfulAuth']
-				.indexOf(eventName) < 0) {
-			console.log(eventName);
-		}
-        //amiio.logger.info('event:', event);
-    });
-    amiio.connect();
-    amiio.on('connected', function(){
-    });
+		amiio.on('incorrectServer', function () {
+			amiio.logger.error("Invalid AMI welcome message. Are you sure if this is AMI?");
+			//process.exit();
+		});
+		amiio.on('connectionRefused', function(){
+			amiio.logger.error("Connection refused.");
+			//process.exit();
+		});
+		amiio.on('incorrectLogin', function () {
+			amiio.logger.error("Incorrect login or password.");
+			//process.exit();
+		});
+		amiio.on('event', function(event){
+			var eventName = event.event;
+			if (['Newexten', 
+				'VarSet', 
+				'InvalidAccountID', 
+				'SuccessfulAuth']
+					.indexOf(eventName) < 0) {
+				console.log('AMI: ' + eventName);
+				if (['Newchannel']
+					.indexOf(eventName) >= 0) { //NewConnectedLine, DialBegin
+					//console.log(event);
+					if (event.channel && event.channel.indexOf('SIP/SIP988') >= 0) {
+						if (event.calleridnum && event.calleridnum
+							.length >= 5) {
 
-var client = require('ari-client');
+							console.log('Autoinformator call');
+
+							var callbackRedirect = function() { redirectCall(event); },
+								callbackFindOrder = function(vids) { setChannelVar(event, 'vids', vids, callbackRedirect); };
+
+							findOrderByPhone(event.calleridnum, callbackFindOrder)
+
+							function setChannelVar(channelEvent, varName, value, callback) {
+								var actionSetVar = new AmiIo.Action.SetVar();
+								actionSetVar.Channel = channelEvent.channel;
+								actionSetVar.Variable = varName;
+								actionSetVar.Value = value;
+								amiio.send(actionSetVar, function(err, data){
+									if (err){
+										//err will be event like OriginateResponse if (#response !== 'Success')
+										console.log(err);
+									}
+									else {
+										callback();
+										//data is event like OriginateResponse if (#response === 'Success')
+									}
+								});
+							}
+							
+							function redirectCall(channelEvent) {
+								//var action = new AmiIo.Action.Originate();
+								var actionRedirect = new AmiIo.Action.Redirect();
+								//var action = new AmiIo.Action.AGI(event.channel, 'agi-play1.php');
+								actionRedirect.Channel = channelEvent.channel;
+								actionRedirect.Context = 'from-trunk';
+								actionRedirect.Exten = '102';
+								actionRedirect.Priority = 1;
+								actionRedirect.v1 = 1;
+								actionRedirect.variables = {
+								  v1: 1
+								};
+								actionRedirect.Variables = {
+								  v1: 1
+								};
+								actionRedirect.Variables.v2 = 1;
+								
+								amiio.send(actionRedirect, function(err, data){
+									if (err){
+										//err will be event like OriginateResponse if (#response !== 'Success')
+										console.log(err);
+									}
+									else {
+										//data is event like OriginateResponse if (#response === 'Success')
+									}
+								});
+							}
+						}
+					}
+				}
+			}
+			//amiio.logger.info('event:', event);
+		});
+		amiio.connect();
+		amiio.on('connected', function(){
+		});
+	
+	}
+
+})();
+
+/*var client = require('ari-client');
 client.connect('http://91.193.223.21:8088', 'ariuser', 'b7cde089729d8f2ebe5e91c2f583fb49===')
   .then(function (ari) { 
 		ari.endpoints.list()
@@ -193,26 +312,6 @@ app.get('/', function(req, res) {
 	req.session.message = 'Hello World';
 	console.log('kkk');
 });
-
-//app.get('/item', function(req, res) {
-//	console.log(req.session.message);
-//});
-
-var sql = require('mssql');
-var clientsLimit = 50;
-var clientsCount = 0;
-
-var config = custom.config;
-/*{
-	user: 'disp_server',
-	password: 'disp_server',
-	server: 'localhost\\SQLEXPRESS', // You can use 'localhost\\instance' to connect to named instance
-	database: 'TD5R1',
-
-	options: {
-		encrypt: false // Use this if you're on Windows Azure
-	}
-}*/
 
 function findClientsSocket(roomId, namespace) {
 	var res = [],
