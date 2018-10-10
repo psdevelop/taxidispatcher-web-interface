@@ -191,98 +191,6 @@ var config = custom.config;
 
 })();
 
-/*var client = require('ari-client');
-client.connect('http://91.193.223.21:8088', 'ariuser', 'b7cde089729d8f2ebe5e91c2f583fb49===')
-  .then(function (ari) { 
-		ari.endpoints.list()
-			.then(function (endpoints) {
-				console.log('endpoints');
-				//console.log(endpoints);
-				endpoints.forEach(function(endPoint) {
-					
-					endPoint.on('EndpointStateChange', 
-						function (event, endpoint) {
-							console.log('EndpointStateChange');
-						}
-					);
-					
-					endPoint.on('PeerStatusChange', 
-						function (event, endpoint) {
-							console.log('PeerStatusChange');
-						}
-					);
-				});
-		  })
-		  .catch(function (err) {});
-
-		function channel_joined (event, incoming) {
-			console.log('StasisStart');
-			//incoming.on('ChannelDtmfReceived', dtmf_received);
-
-			//incoming.answer(function (err) {
-			//	play(incoming, 'sound:hello-world');
-			//});
-		}
-		  
-		function checkChannels() {  
-			ari.channels.list()
-			  .then(function (channels) {
-					console.log('channels');
-					//console.log(channels);
-				  
-					if (!channels.length) {
-						return;
-					}
-				  
-					var analyzedChannelsList = channels.filter(function(channel) {
-						return channel.name && channel.name.indexOf('SIP/SIP988') === 0; 
-					});
-				  
-					if (!analyzedChannelsList.length) {
-						console.log('no analyzed channels!');
-						return;
-					}
-				  
-					analyzedChannelsList.forEach(function(analyzedChannel) {
-						console.log('start channel-state');
-					});
-			  })
-			  .catch(function (err) {});
-		}
-		  
-		ari.asterisk.getInfo()
-		  .then(function (info) {
-			  console.log('asterisk info');
-			  console.log(info);
-		  })
-		  .catch(function (err) {});
-		  
-		//var handlerPeerStatusChange = function (event, channel) {
-		//	console.log('PeerStatusChange');
-		//};
-
-		// receive all 'PeerStatusChange' events 
-		//ari.on('PeerStatusChange', handlerPeerStatusChange);
-		
-		//var handlerChannelCreated = function (event, channel) {
-		//	console.log('ChannelCreated');
-		//};
-
-		// receive all 'ChannelCreated' events 
-		//ari.on('ChannelCreated', handlerChannelCreated);
-		
-		//var handlerBridgeCreated = function (event, bridge) {
-		//	console.log('BridgeCreated');
-		//};
-
-		// receive all 'BridgeCreated' events 
-		//ari.on('BridgeCreated', handlerBridgeCreated);
-		
-		setInterval(checkChannels, 5000);
-  })
-  .catch(function (err) { console.log(err); });
-*/
-
 // Access the session as req.session
 app.get('/sess', function(req, res, next) {
 	if (req.session.views) {
@@ -783,7 +691,6 @@ function queryRequest(sqlText, callbackSuccess, callbackError, connection) {
 
 io.sockets.on('connection', function (socket) {
 	console.log('New sock id: ' + socket.id);
-	//console.log(Object.keys(socket));
 	socketsParams[socket.id] = {};
 	var reqTimeout = 0;
 	var reqCancelTimeout = 0;
@@ -800,14 +707,53 @@ io.sockets.on('connection', function (socket) {
 	//socketDBConfig.password = '';//socket.handshake.session.password || '';
 
 	var condition = {
-		orders:
+			orders:
+				{
+					Zavershyon: 0,
+					Arhivnyi: 0,
+					Predvariteljnyi: 0
+				}
+		},
+		condDependencies = [
 			{
-				Zavershyon: 0,
-				Arhivnyi: 0,
-				Predvariteljnyi: 0
+				type: 'dataSelect',
+				staticExpression: 'TOP',
+				Arhivnyi: 1,
+				Zavershyon: 1,
+				Predvariteljnyi: 'NONE',
+				injectExpression: 'TOP 20'
+			},
+			{
+				type: 'dataSelect',
+				staticExpression: 'ORDER',
+				Arhivnyi: 1,
+				Zavershyon: 1,
+				Predvariteljnyi: 'NONE',
+				injectExpression: 'ORDER BY BOLD_ID DESC'
 			}
-	};
+		];
 
+	function getDependenceInject(options) {
+		if (!options) {
+			return '';
+		}
+		
+		var dependencies = condDependencies, dependStr = '';
+		
+		for (i in options) {
+			dependencies = dependencies.filter(function(dependency) {
+				return dependency[i] && (dependency[i] === options[i] || dependency[i] === 'NONE');
+			});
+		}
+		
+		dependencies.forEach(function(dependency) {
+			dependStr += dependency.injectExpression;
+		});
+		
+		console.log('dependStr: ' + dependStr);
+		return dependStr;
+	}
+		
 	function decReqTimeout() {
 		if (reqTimeout > 0)
 			reqTimeout--;
@@ -852,13 +798,27 @@ io.sockets.on('connection', function (socket) {
 			}
 		});
 	}
+	
+	function dependencyExpression(optionsArray) {
+		var dependOptions = {};
+		
+		optionsArray.forEach(function(optionItem) {
+			Object.assign(
+				dependOptions, optionItem)
+		});
+		
+		console.log(dependOptions);
+		return getDependenceInject(dependOptions);
+	}
 
 	function emitData(entity) {
 		if (entity.indexOf('orders') === 0 && entity.indexOf('orders_coordinates') !== 0) {
 			var request = new sql.Request(connection),
 				whereClause = ' where (Zavershyon = ' + condition.orders.Zavershyon + ') AND ' +
 					' (Arhivnyi = ' + condition.orders.Arhivnyi + ')';
-			request.query('select * FROM ActiveOrders' + whereClause, function (err, recordset) {
+			request.query('select ' + dependencyExpression([{type: 'dataSelect',
+				staticExpression: 'TOP'}, condition.orders]) + ' * FROM ActiveOrders ' + whereClause + dependencyExpression([{type: 'dataSelect',
+				staticExpression: 'ORDER'}, condition.orders]), function (err, recordset) {
 				socket.emit('orders', {
 					userId: userId,
 					orders: recordset && recordset.recordset
@@ -936,6 +896,13 @@ io.sockets.on('connection', function (socket) {
 		if (data && data.entity && data.entity === 'order') {
 			emitData('orders');
 		}
+	});
+	
+	socket.on('app-state', function (data) {
+		console.log('app-state');
+		emitData('orders');
+		emitData('drivers');
+		emitData('orders_coordinates');
 	});
 
 	socket.on('orders-state', function (data) {
@@ -1120,9 +1087,7 @@ io.sockets.on('connection', function (socket) {
 	});
 
 	var newOrder = function (data) {
-		queryRequest('EXEC	[dbo].[InsertOrderWithParamsRClientEx] @adres = N\'\', @enadres = N\'\',@phone = N\'000\',' +
-				'@disp_id = -1, @status = 0, @color_check = 0, @op_order = 0, @gsm_detect_code = 0,' +
-				'@deny_duplicate = 0, @colored_new = 0, @ab_num = N\'\', @client_id = -1, @ord_num = 0,@order_id = 0',
+		queryRequest('EXEC	[dbo].[InsertOrderWithParamsRDispatcher] @adres = N\'\', @enadres = N\'\',@phone = N\'\',@disp_id = -1, @status = 0, @color_check = 0, @op_order = 0, @gsm_detect_code = 0,@deny_duplicate = 0, @colored_new = 0, @ab_num = N\'\', @client_id = -1, @ord_num = 0,@order_id = 0',
 						function (recordset) {
 							emitData('orders');
 						},
@@ -1166,8 +1131,9 @@ io.sockets.on('connection', function (socket) {
 			function (recordset) {
 				if (recordset && recordset.recordset &&
 					recordset.recordset.length) {
-					emitData('orders');
+					//emitData('orders');
 				}
+				emitData('orders');
 			},
 			function (err) {
 				console.log('UPDATE Zakaz SET ' + setPhrase + wherePhrase);

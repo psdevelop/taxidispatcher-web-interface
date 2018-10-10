@@ -1,7 +1,9 @@
 <span ng-switch="$ctrl.editMode">
 	<input ng-switch-when="true" type="{{$ctrl.fieldType}}" ng-model="$ctrl.fieldValue" ng-keypress="$ctrl.keyPress($event)" class="editFieldInput state" data-state0="id" data-state0-val="{{$ctrl.fieldId}}" data-state1="{{$ctrl.fieldName}}" data-state1-val="{{$ctrl.fieldValue}}" data-state2="adr_manual_set" data-state2-val="1" data-state3="otpuskaetsya_dostepcherom" data-state3-val="ctx:userId" />
 
-	<a href="#" ng-click="$ctrl.handleModeChange()">
+	<a href="#" ng-click="$ctrl.handleModeChange($event);">
+		<img ng-switch-default class="editIcon" src="/images/edit1.png" />
 		<span ng-switch-default>{{$ctrl.fieldValue}}</span>
 	</a>
+	
 </span>

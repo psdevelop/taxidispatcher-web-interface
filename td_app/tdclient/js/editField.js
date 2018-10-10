@@ -13,7 +13,8 @@ function EditFieldController($scope, $element, $attrs, ascInterface) {
 		}
 	};
 
-  ctrl.handleModeChange = function() {
+  ctrl.handleModeChange = function(e) {
+	e && e.preventDefault();
     if (ctrl.editMode) {
       ctrl.onUpdate({value: ctrl.fieldValue});
       ctrl.fieldValueCopy = ctrl.fieldValue;
