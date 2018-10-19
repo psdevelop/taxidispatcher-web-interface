@@ -377,6 +377,7 @@ function sendAPIRequest(params, success, fail, options) {
 						if (!sectors[sectorCoord.BOLD_ID]) {
 							sectors[sectorCoord.BOLD_ID] = {
 								name: sectorCoord.Naimenovanie,
+								districtId: sectorCoord.district_id,
 								coords: []
 							}
 						}
@@ -531,6 +532,7 @@ function sendAPIRequest(params, success, fail, options) {
 							{
 								orderId: order.BOLD_ID,
 								defaultSectorId: order.default_sector_id,
+								districtId: order.district_id,
 								'minLat': minLat,
 								'minLon': minLon,
 								'maxLat': maxLat,
@@ -576,8 +578,20 @@ function sendAPIRequest(params, success, fail, options) {
 		return result;
 	}
 	
-	function getAddrPointsByFeatureCollection(featureCollection, options) {
-		var featuresList = featureCollection && featureCollection.features && featureCollection.features.length && featureCollection.features.filter(function(feat) { return feat.type === 'Feature'; }), feature, featureGeometries, i, result = false, points;
+	function hasStreetAddrComponent(feature) {
+		var properties = feature && feature.properties,
+			addressComponents = properties && properties.address_components,
+			withStreetAddresses = addressComponents && addressComponents.length && 
+				addressComponents.filter(function(addrComponent) { 
+					return addrComponent.type === 'street';
+				});
+		return withStreetAddresses && withStreetAddresses.length;
+	}
+	
+	function getAddrPointsByFeatureCollection(featureCollection, options, withStreets) {
+		var featuresList = featureCollection && featureCollection.features && featureCollection.features.length && featureCollection.features.filter(function(feat) { 
+			return feat.type === 'Feature' && (!withStreets || hasStreetAddrComponent(feat)); }), 
+			feature, featureGeometries, i, result = false, points;
 		
 		if (!(featuresList && featuresList.length)) {
 			return result;
@@ -597,11 +611,12 @@ function sendAPIRequest(params, success, fail, options) {
 	}
 	
 	function detectSectorOnGeocodeData(data, options) {
-		var sector, result = data && data.result,
+		var sector, result = data && data.result, districtId = options && options.districtId || -1,
 			orderId = options && options.orderId, isDetected = false,
 			defaultSectorId = options && options.defaultSectorId, idx,
 			address = result && result.priority && result.priority === 'address' && result.address && result.address.length && result.address.filter(function(addr) { return addr.type === 'FeatureCollection'; }), featureCollection,
-			pointCoordinates, pointLat, pointLon;
+			pointCoordinates, pointLat = false, pointLon = false,
+			withoutStreetPointLat = false, withoutStreetPointLon = false;
 			
 			if (!(address && address.length)) {
 				setFailOrderSectDetect(orderId, defaultSectorId);
@@ -609,10 +624,17 @@ function sendAPIRequest(params, success, fail, options) {
 			
 			for (idx = 0; idx < address.length; idx++) {
 				featureCollection = address[idx];
-				pointCoordinates = getAddrPointsByFeatureCollection(featureCollection, options);
-				if (pointCoordinates !== false && pointCoordinates && pointCoordinates.length) {
+
+				pointCoordinates = getAddrPointsByFeatureCollection(featureCollection, options, true);
+				if (pointCoordinates !== false && pointCoordinates && pointCoordinates.length && pointLat === false && pointLon === false) {
 					pointLat = pointCoordinates && pointCoordinates.length && pointCoordinates[1];
 					pointLon = pointCoordinates && pointCoordinates.length && pointCoordinates[0];
+				}
+
+				pointCoordinates = getAddrPointsByFeatureCollection(featureCollection, options, false);
+				if (pointCoordinates !== false && pointCoordinates && pointCoordinates.length && withoutStreetPointLat === false && withoutStreetPointLon === false) {
+					withoutStreetPointLat = pointCoordinates && pointCoordinates.length && pointCoordinates[1];
+					withoutStreetPointLon = pointCoordinates && pointCoordinates.length && pointCoordinates[0];
 				}
 			}
 			/*featuresList = featureCollection && featureCollection.features && featureCollection.features.length && featureCollection.features.filter(function(feat) { return feat.type === 'Feature'; }),
@@ -628,6 +650,11 @@ function sendAPIRequest(params, success, fail, options) {
 				console.log('Point lat=' + pointLat + ', lon=' + pointLon);
 				for (i in sectors) {
 					sector = sectors[i];
+					
+					if (districtId > 0 && sector.districtId !== districtId) {
+						console.log(sector.districtId + '+++' + districtId);
+						continue;
+					}
 					//console.log(sector.coords);
 					//console.log(isPointInsidePolygon(sector.coords, pointLon, pointLat));
 					//console.log(isPointInsidePolygon(sector.coords, pointLat, pointLon));
@@ -650,6 +677,19 @@ function sendAPIRequest(params, success, fail, options) {
 						break;
 					}
 				}
+			} else if (withoutStreetPointLat && withoutStreetPointLon && orderId) {
+				console.log('Point without street lat=' + withoutStreetPointLat + ', lon=' + withoutStreetPointLon);
+				queryRequest('UPDATE Zakaz SET failed_adr_coords_detect = 1' + 
+					', adr_detect_lat = \'' + withoutStreetPointLat + '\', adr_detect_lon = \'' + 
+					withoutStreetPointLon + '\' WHERE BOLD_ID = ' + orderId,
+					function (recordset) {
+						isActiveDetecting = false;
+					},
+					function (err) {
+						setFailOrderSectDetect(orderId, defaultSectorId);
+						console.log('Err of order set detect coords without streets! ' + err);
+					},
+					connectionTasks);
 			}
 
 			//console.log('333');
