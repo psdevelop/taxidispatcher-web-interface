@@ -495,7 +495,7 @@ function sendAPIRequest(params, success, fail, options) {
 		
 		isActiveDetecting = true;
 		queryRequest('SELECT ord.BOLD_ID, ord.Adres_vyzova_vvodim, ord.district_id, ISNULL(dis.address, \'\') as geocode_addr, ISNULL(dis.default_sector_id, 0) as default_sector_id FROM Zakaz ord LEFT JOIN DISTRICTS dis ON ord.district_id = dis.id WHERE ord.Zavershyon = 0 ' + 
-			' AND ord.failed_adr_coords_detect = 0 AND ord.detected_sector = -1 AND LEN(ISNULL(ord.Adres_vyzova_vvodim,\'\')) > 2 ',
+			' AND ord.failed_adr_coords_detect = 0 AND ord.detected_sector = -1 AND LEN(ISNULL(ord.Adres_vyzova_vvodim,\'\')) > 2 AND ord.adr_manual_set = 1 ',
 			function (recordset) {
 				//console.log('111');
 				if (recordset && recordset.recordset &&
