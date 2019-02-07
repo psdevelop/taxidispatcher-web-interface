@@ -10,15 +10,16 @@
 	factory('injectedSocket', function (socketFactory) {
 		return socketFactory({
 			prefix: '',
-			ioSocket: io.connect(socketUrl) //'http://127.0.0.1:8085'
+			ioSocket: io.connect(socketUrl) 
 		});
 	})
 	.factory('ascInterface', function (injectedSocket) {
 
 		var factory = {};
 
-		factory.state = function() {
-			var $target = $(event.target),
+		factory.state = function(e) {
+			e && e.preventDefault();
+			var $target = $(event.target).hasClass('state') ? $(event.target) : $(event.target).closest('.editScope').find('.state'),
 				$aspElement = $target.data('aspect0'),
 				$injectedAspectClass = $target.data('injected-aspect0'),
 				$injectedAspect = $injectedAspectClass && $('.aspect_inject_' + $injectedAspectClass),
@@ -26,12 +27,23 @@
 				$injectedCtxElm = $injectedAspect && $injectedAspect.closest('div[data-ctx0]');
 			if ($target.hasClass('state') && $ctxElement.length) {
 				var stateParams = {}, i = 0, 
-					isCtxParam = false, paramVal;
+					isCtxParam = false, paramVal, $editField = $target.closest('.editField');
 				while (!(typeof $target.data('state' + i + '-val') === 'undefined')) {
 					paramVal = $target.data('state' + i + '-val');
 					isCtxParam = paramVal && paramVal.indexOf && 
 						paramVal.indexOf('ctx:') == 0;
 					stateParams[($target.data('state' + i) || ('state' + i))] = 
+						isCtxParam ? getCtxParamVal($ctxElement, paramVal) :
+						paramVal;
+					i++;
+				}
+				
+				i = 0;
+				while ($editField && !(typeof $editField.data('state' + i + '-val') === 'undefined')) {
+					paramVal = $editField.data('state' + i + '-val');
+					isCtxParam = paramVal && paramVal.indexOf && 
+						paramVal.indexOf('ctx:') == 0;
+					stateParams[($editField.data('state' + i) || ('state' + i))] = 
 						isCtxParam ? getCtxParamVal($ctxElement, paramVal) :
 						paramVal;
 					i++;

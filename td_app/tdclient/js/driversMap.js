@@ -5,7 +5,8 @@
 			icons = {},
 			markers = {},
 			orders = {},
-			orderIcons = {};
+			orderIcons = {},
+			isFirstPopup = false;
 
 		ctrl.list = [];
 		ctrl.userId = -1;
@@ -44,54 +45,78 @@
 		}*/
 
 		injectedSocket.on('drivers', function (data) {
-			var driverLat, driverLon, marker;
+			var driverLat, driverLon, marker, driversIds = [], driverId;
 			ctrl.list = data.drivers;
 			ctrl.userId = data.userId;
 			
 			ctrl.list.forEach(function(driver) {
 				driverLat = driver.last_lat;
 				driverLon = driver.last_lon;
+				driversIds.push(parseInt(driver.id,10));
 
-				if (driverLat && driverLon) {
-					if (!icons[driver.id]) {
-						icons[driver.id] = L.icon({ // создаем иконку
-							iconUrl: driver.Zanyat_drugim_disp ? '/images/car_red.png' : '/images/car_green.png',
-							iconSize: [25, 25],
-							iconType: driver.Zanyat_drugim_disp ? 'alt2' : 'alt3'
-						});
-					}
+				if (driverLat && driverLon && parseInt(driverLat, 10) > 1 && parseInt(driverLon, 10) > 1) {
+					
+					icons[driver.id] = 
+						(driver.status_time > 2 && false) ? '/images/car_white.png'
+						: (driver.Zanyat_drugim_disp ? '/images/car_red.png' 
+						: (driver.Na_pereryve ? '/images/car_blue.png' : '/images/car_green.png'));
 
 					if (!markers[driver.id]) {
 						markers[driver.id] = L.sm.marker([driverLat, driverLon], {
-							icon: icons[driver.id], // передаем иконку маркеру
+							icon: //icons[driver.id], // передаем иконку маркеру
+							new L.DivIcon({
+								className: 'my-div-icon',
+								html: '<img class="imageMarker" src="' + 
+								icons[driver.id] + '"/>'+
+								'<span class="markerText">' + driver.Pozyvnoi + '</span>'
+							}),
 							title: '' + driver.Pozyvnoi,
 							iconClassName: 'icon-w12h20',
-							iconType: driver.Zanyat_drugim_disp ? 'alt2' : 'alt3'
+							iconType: driver.Zanyat_drugim_disp ? 'alt2' : 'alt3',
+							//popup: '' + driver.Pozyvnoi, // здесь может быть код HTML или DOM-элемент
+							//popupOptions: {
+							//	open: true
+							//}
 						});
 						markers[driver.id].bindPopup('' + driver.Pozyvnoi);
 					} else {
+						markers[driver.id].setIcon(new L.DivIcon({
+								className: 'my-div-icon',
+								html: '<img class="imageMarker" src="' + 
+								icons[driver.id] + '"/>'+
+								'<span class="markerText">' + driver.Pozyvnoi + '</span>'
+							}));
 						markers[driver.id].setLatLng([driverLat, driverLon]);
+						markers[driver.id].setOpacity(1);
 					}
 					
 					markers[driver.id].addTo(map);
 					
-					//if (!markers[driver.id].isPopupOpen()) {
-					//	markers[driver.id].togglePopup();
-					//}
-					
-					markers[driver.id].openPopup(markers[driver.id].getLatLng());
+					if (!isFirstPopup) {
+						isFirstPopup = true;
+						markers[driver.id].openPopup(markers[driver.id].getLatLng());
+					}
 				}
 			});
+			
+			for (driverId in markers) {
+				if (driversIds.indexOf(parseInt(driverId,10)) < 0) {
+					markers[driverId].setOpacity(0);
+					//orders[orderId].removeFrom(map);
+				}
+			}
 		});
 		
 		injectedSocket.on('orders_coordinates', function (data) {
-			var orderLat, orderLon, marker;
+			var orderLat, orderLon, marker, ordersIds = [], 
+				orderId, iconFileName, orderIcon;
 			//ctrl.list = data.drivers;
 			//ctrl.userId = data.userId;
 			
 			data.orders.forEach(function(order) {
 				orderLat = order.lat;
 				orderLon = order.lon;
+				ordersIds.push(parseInt(order.id,10));
 
 				if (orderLat && orderLon) {
 					if (!orderIcons[order.id]) {
@@ -101,22 +126,50 @@
 						});
 					}
 
+					iconFileName = order.vypolnyaetsya_voditelem > 0
+						? 'man'
+						: 'man_free';
+					orderIcon = new L.DivIcon({
+						className: 'my-div-icon',
+						html: '<img class="imageMarker" src="/images/' + iconFileName + '.png"/><span class="markerText">' + order.addr + '</span>'
+					});
 					if (!orders[order.id]) {
 						orders[order.id] = L.sm.marker([orderLat, orderLon], {
-							icon: orderIcons[order.id], // передаем иконку маркеру
-							title: '' + order.addr
+							icon: //orderIcons[order.id], // передаем иконку маркеру
+							orderIcon,
+							title: '' + order.addr,
+							//popup: '' + order.addr, // здесь может быть код HTML или DOM-элемент
+							//popupOptions: {
+							//	open: true,
+							//	autoClose: false
+							//}
 						});
 						orders[order.id].bindPopup('' + order.addr);
 					} else {
+						orders[order.id].setIcon(orderIcon);
 						orders[order.id].setLatLng([orderLat, orderLon]);
 					}
 					
 					orders[order.id].addTo(map);
-					
-					orders[order.id].openPopup(orders[order.id].getLatLng());
 				}
 			});
+			
+			for (orderId in orders) {
+				if (ordersIds.indexOf(parseInt(orderId,10)) < 0) {
+					orders[orderId].setOpacity(0);
+					//orders[orderId].removeFrom(map);
+				}
+			}
 		});
+		
+		var getAppState = function() {
+			injectedSocket.emit(
+				'app-state', 
+				{'drivers':true, 'orders_coordinates':true}
+			);
+		};
+		
+		setInterval(getAppState, 10000);
 	
 		/*this.state = ascInterface.state;
 		//this.elAction = function() {

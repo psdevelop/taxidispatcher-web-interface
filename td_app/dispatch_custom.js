@@ -10,12 +10,12 @@ var config = {
 	},
 	amiConfig = {
 		port:5038, 
-		host:'0.0.0.0', 
+		host:'91.193.223.21', 
 		login:'radminnode', 
-		password:'', 
+		password:'kh6hbc96jnu5bys', 
 		encoding: 'ascii'
 	},
-	useAMIClient = true;
+	useAMIClient = false;
 
 module.exports.config = config;
 module.exports.amiConfig = amiConfig;

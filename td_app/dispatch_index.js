@@ -12,7 +12,13 @@ var http = require('http'),
 		cookie: { maxAge: 60000 }
 	}),
 	socketsParams = {},
-	custom = require('./dispatch_custom');
+	custom = require('./dispatch_custom'), 
+	s = 'Str a = ${a.b}';
+	
+	var 
+	a = { b: 3}
+	
+	console.log(eval('`' + s + '`'));
 	//sharedsession = require("express-socket.io-session");
 
 //({
@@ -21,9 +27,14 @@ var http = require('http'),
 //	saveUninitialized: true
 //})
 
-app.listen(6031, function () {
-	console.log('Express app listening on port 6031!');
-});
+try {
+	app.listen(6031, function () {
+		console.log('Express app listening on port 6031!');
+	});
+} catch (e) {
+	console.log('Ошибка запуска сервера, возможно копия уже запущена на данном порту!');
+	exit(0);
+}
 
 app.use(express.static(__dirname + '/tdclient'));
 //app.use(session);
@@ -303,7 +314,7 @@ function sendAPIRequest(params, success, fail, options) {
 //модуль определения координат и сектора заказа по его адресу
 (function() {
 	var sectors = {}, isActiveDetecting = false, minLat = false,
-		minLon = false, maxLat = false, maxLon = false,
+		minLon = false, maxLat = false, maxLon = false, geocodeAttemptsCnt = 0,
 		defaultGeocodingPrefix = '', enableAutoSectorDetect = false,
 		connectionTasks, createConnection = function() {
 			connectonAttempts++;
@@ -488,10 +499,13 @@ function sendAPIRequest(params, success, fail, options) {
 
 	function geocodeOrderAddresses() {
 		//console.log('Check orders for geocoded...');
-		if (isActiveDetecting) {
+		if (isActiveDetecting && geocodeAttemptsCnt < 5) {
+			geocodeAttemptsCnt++;
 			console.log('Sector detect is active... out');
 			return;
 		}
+		
+		geocodeAttemptsCnt = 0;
 		
 		isActiveDetecting = true;
 		queryRequest('SELECT ord.BOLD_ID, ord.Adres_vyzova_vvodim, ord.district_id, ISNULL(dis.address, \'\') as geocode_addr, ISNULL(dis.default_sector_id, 0) as default_sector_id FROM Zakaz ord LEFT JOIN DISTRICTS dis ON ord.district_id = dis.id WHERE ord.Zavershyon = 0 ' + 
@@ -500,9 +514,20 @@ function sendAPIRequest(params, success, fail, options) {
 				//console.log('111');
 				if (recordset && recordset.recordset &&
 					recordset.recordset.length) {
-					var orderList = recordset.recordset;
+					var orderList = recordset.recordset, order;
 					//console.log(orderList);
-					orderList.forEach(function(order) {
+					
+					if (minLat === false || minLon === false || 
+						maxLat === false || maxLon === false) {
+
+						isActiveDetecting = false;
+						console.log('Missing bbox!');
+						return;
+					}
+					
+					//orderList.forEach(function(order) {
+					order = orderList[0];
+					if (order) {
 						console.log((order.district_id && order.district_id > 0 && order.geocode_addr ? order.geocode_addr : defaultGeocodingPrefix) + ',' + order.Adres_vyzova_vvodim);
 
 						if (minLat === false || minLon === false || 
@@ -539,7 +564,10 @@ function sendAPIRequest(params, success, fail, options) {
 								'maxLon': maxLon
 							}
 						);
-					});
+					} else {
+						isActiveDetecting = false;
+						console.log('Missing order!');
+					}
 				} else {
 					isActiveDetecting = false;
 				}
@@ -770,28 +798,148 @@ io.sockets.on('connection', function (socket) {
 				Zavershyon: 1,
 				Predvariteljnyi: 'NONE',
 				injectExpression: 'ORDER BY BOLD_ID DESC'
-			}
-		];
+			},
+			{
+				type: 'dataSelect',
+				staticExpression: 'ORDER',
+				Arhivnyi: 0,
+				Zavershyon: 0,
+				Predvariteljnyi: 'NONE',
+				injectExpression: 'ORDER BY BOLD_ID DESC'
+			},
+			{
+				type: 'dataUpdate',
+				staticExpression: 'ORDER_DRNUM',
+				Pozyvnoi_ustan: 'INJECT',
+				id: 'INJECT',
+				otpuskaetsya_dostepcherom: 'INJECT',
+				adr_manual_set: 'INJECT',
+				injectExpression: 'EXEC	[dbo].[AssignDriverByNumOnOrder] @order_id = ${options.id}, @driver_num = ${options.Pozyvnoi_ustan}, @user_id = ${options.otpuskaetsya_dostepcherom}, @count = 0'
+			}//,
+			/*{
+				type: 'dataUpdate',
+				staticExpression: 'ORDER_BAD_COMMENT',
+				order_bad_comment: 'INJECT',
+				id: 'INJECT',
+				otpuskaetsya_dostepcherom: 'INJECT',
+				injectExpression: 'EXEC	[dbo].[AddClientToBlackList] @order_id = ${options.id}, @comment = \'${options.order_bad_comment}\', @user_id = ${options.otpuskaetsya_dostepcherom}, @count = 0'
+			}*/
+		],
+		entityDependencies = {
+			orders : [
+				{
+					type: 'base',
+					list: 'ActiveOrders'
+				},
+				{
+					type: 'relation',
+					list: 'Sektor_raboty sr LEFT JOIN Spravochnik sp ON sr.BOLD_ID = sp.BOLD_ID',
+					link: 'order_sect'
+				},
+				{
+					type: 'relation',
+					list: 'DISTRICTS',
+					link: 'order_district'
+				},
+			]
+		};
+		
+	function getDependListData(entityDependenciesList, callBack, dependData) {
+		
+		if (entityDependenciesList && entityDependenciesList.length) {
+			var request = new sql.Request(connection);
+			request.query('select * FROM ' + entityDependenciesList[0].list, //
+				function (err, recordset) {
+					if (err) {
+						console.log(err);
+						callBack([]);
+						return;
+					}
+					dependData[entityDependenciesList[0].link] = recordset.recordset;
+					
+					if (entityDependenciesList.length > 1) {
+						entityDependenciesList.splice(0,1);
+						getDependListData(entityDependenciesList, callBack, dependData);
+					} else {
+						callBack(dependData);
+					}
+				});
+		}
+	}
+		
+	function getEntityDependData(entity, callBack) {
+		var dependData = {},
+			entityDependenciesList = entityDependencies[entity] && 
+				entityDependencies[entity].filter(function(dependency) {
+					return dependency.type === 'relation';  
+				});
+		
+		getDependListData(entityDependenciesList, callBack, dependData);
+		//callBack([]);
+	}
 
-	function getDependenceInject(options) {
+	function getDependenceInject(options, dependencyType) {
 		if (!options) {
 			return '';
 		}
 		
-		var dependencies = condDependencies, dependStr = '';
+		//if (!dependencyType) {
+		//	dependencyType = 'dataSelect';
+		//}
+		
+		var dependencies = condDependencies, dependStr = '',
+			isInjectedOptions = false, i;
+		
+		console.log('len=' + dependencies.length);
+		//console.log('dependencies: ' + dependencies);
+		console.log('options: ');
+		console.log(options);
+		//dependencies = dependencies.filter(function(dependency) {
+		//	return dependency.type == dependencyType;
+		//});
 		
 		for (i in options) {
 			dependencies = dependencies.filter(function(dependency) {
-				return dependency[i] && (dependency[i] === options[i] || dependency[i] === 'NONE');
+				return (typeof dependency[i] !== 'undefined') && (dependency[i] === options[i] || dependency[i] === 'NONE' || dependency[i] === 'INJECT');
 			});
+			
+			//console.log(i + ': ' + options[i] + 
+			//	', len=' + dependencies.length);
+			if (!isInjectedOptions) {
+				isInjectedOptions |= dependencies.filter(function(dependency) {
+					return (typeof dependency[i] !== 'undefined') && dependency[i] === 'INJECT';
+				}).length;
+			}
 		}
 		
+		isInjectedOptions && console.log('is injected!');
+		
 		dependencies.forEach(function(dependency) {
-			dependStr += dependency.injectExpression;
+			if (!isInjectedOptions || 
+				validateDependencyOptions(dependency, options)) {
+
+				dependStr += isInjectedOptions 
+					? eval('`' + dependency.injectExpression + '`')
+					: dependency.injectExpression;
+			}
 		});
 		
-		console.log('dependStr: ' + dependStr);
+		//console.log('dependStr: [' + dependStr + ']');
 		return dependStr;
+	}
+	
+	function validateDependencyOptions(dependency, options) {
+		//console.log(dependency);
+		//console.log(options);
+		for (i in dependency) {
+			
+			if (dependency[i] === 'INJECT' && options && 
+				(typeof options[i] === 'undefined')) {
+				return false;
+			}
+			//console.log('depend i=' + i + '[' + (typeof options[i]));
+		}
+		return true;
 	}
 		
 	function decReqTimeout() {
@@ -847,27 +995,36 @@ io.sockets.on('connection', function (socket) {
 				dependOptions, optionItem)
 		});
 		
-		console.log(dependOptions);
+		//console.log('dependOptions: ');
+		//console.log(dependOptions);
 		return getDependenceInject(dependOptions);
 	}
 
 	function emitData(entity) {
+		if (userId < 0) {
+			return;
+		}
+
 		if (entity.indexOf('orders') === 0 && entity.indexOf('orders_coordinates') !== 0) {
-			var request = new sql.Request(connection),
-				whereClause = ' where (Zavershyon = ' + condition.orders.Zavershyon + ') AND ' +
-					' (Arhivnyi = ' + condition.orders.Arhivnyi + ')';
-			request.query('select ' + dependencyExpression([{type: 'dataSelect',
-				staticExpression: 'TOP'}, condition.orders]) + ' * FROM ActiveOrders ' + whereClause + dependencyExpression([{type: 'dataSelect',
-				staticExpression: 'ORDER'}, condition.orders]), function (err, recordset) {
-				socket.emit('orders', {
-					userId: userId,
-					orders: recordset && recordset.recordset
+			var baseCallback = function(dependData) {
+				//console.log('===========>>>' + dependData);
+				var request = new sql.Request(connection),
+					whereClause = ' where (Zavershyon = ' + condition.orders.Zavershyon + ') AND (Arhivnyi = ' + condition.orders.Arhivnyi + ')';
+				request.query('select ' + dependencyExpression([{type: 'dataSelect',
+					staticExpression: 'TOP'}, condition.orders]) + ' * FROM ActiveOrders ' + whereClause + dependencyExpression([{type: 'dataSelect',
+					staticExpression: 'ORDER'}, condition.orders]), function (err, recordset) {
+					socket.emit('orders', {
+						userId: userId,
+						orders: recordset && recordset.recordset,
+						depends: dependData //{ order_sect: [1,2,3] }
+					});
 				});
-			});
+			};
+			getEntityDependData('orders', baseCallback);
 		} else if (entity.indexOf('drivers') === 0) {
 			var whereClause = ' where V_rabote = 1 AND Pozyvnoi > 0';
 			queryRequest('SELECT BOLD_ID as id, Pozyvnoi, last_lat, last_lon, Na_pereryve,' + 
-				' rabotaet_na_sektore, Zanyat_drugim_disp FROM Voditelj ' + whereClause,
+				' rabotaet_na_sektore, Zanyat_drugim_disp, ABS(DATEDIFF(minute, LAST_STATUS_TIME, GETDATE())) as status_time FROM Voditelj ' + whereClause,
 				function (recordset) {
 					if (recordset && recordset.recordset) {
 						socket.emit('drivers', {
@@ -881,11 +1038,11 @@ io.sockets.on('connection', function (socket) {
 				connection);
 		} else if (entity.indexOf('orders_coordinates') === 0) {
 			var whereClause = ' where Zavershyon = 0 AND Arhivnyi = 0 AND (NOT (ISNULL(rclient_lat, \'\') = \'\' OR ISNULL(rclient_lon, \'\') = \'\') OR NOT (ISNULL(adr_detect_lat, \'\') = \'\' OR ISNULL(adr_detect_lon, \'\') = \'\'))';
-			console.log('orders_coordinates');
-			queryRequest('select BOLD_ID as id, (CASE WHEN (ISNULL(rclient_lat, \'\') <> \'\') THEN rclient_lat ELSE adr_detect_lat END) as lat, (CASE WHEN (ISNULL(rclient_lat, \'\') <> \'\') THEN rclient_lon ELSE adr_detect_lon END) as lon, Adres_vyzova_vvodim as addr FROM Zakaz' + whereClause, 
+			//console.log('orders_coordinates');
+			queryRequest('select BOLD_ID as id, (CASE WHEN (ISNULL(rclient_lat, \'\') <> \'\') THEN rclient_lat ELSE adr_detect_lat END) as lat, (CASE WHEN (ISNULL(rclient_lat, \'\') <> \'\') THEN rclient_lon ELSE adr_detect_lon END) as lon, Adres_vyzova_vvodim as addr, vypolnyaetsya_voditelem FROM Zakaz' + whereClause, 
 				function (recordset) {
-					console.log(recordset.recordset);
-					recordset.recordset && recordset.recordset.length && socket.emit('orders_coordinates', 
+					//console.log(recordset.recordset);
+					recordset && recordset.recordset && socket.emit('orders_coordinates', 
 						{
 							userId: userId,
 							orders: recordset && recordset.recordset
@@ -909,7 +1066,7 @@ io.sockets.on('connection', function (socket) {
 					queryRequest(
 						'UPDATE Personal SET drivers_coord_updated = 0, orders_coord_updated = 0 WHERE BOLD_ID = ' + userId,
 						function (recordset) {
-							console.log('emit updated drivers coords');
+							//console.log('emit updated drivers coords');
 							drivers_coord_updated && emitData('drivers');
 							orders_coord_updated && emitData('orders_coordinates');
 						},
@@ -923,7 +1080,7 @@ io.sockets.on('connection', function (socket) {
 			connection);
 	}
 
-	socket.on('crud', function (data) {
+	/*socket.on('crud', function (data) {
 		console.log(data);
 		if (typeof data === 'string') {
 			tp = tryParseJSON(data);
@@ -936,13 +1093,18 @@ io.sockets.on('connection', function (socket) {
 		if (data && data.entity && data.entity === 'order') {
 			emitData('orders');
 		}
-	});
+	});*/
 	
 	socket.on('app-state', function (data) {
-		console.log('app-state');
-		emitData('orders');
-		emitData('drivers');
-		emitData('orders_coordinates');
+		//console.log('app-state');
+		if (data) {
+			//data.orders && console.log('emitData orders');
+			//data.drivers && console.log('emitData drivers');
+			//data.orders_coordinates && console.log('emitData orders_coordinates');
+			data.orders && emitData('orders');
+			data.drivers && emitData('drivers');
+			data.orders_coordinates && emitData('orders_coordinates');
+		}
 	});
 
 	socket.on('orders-state', function (data) {
@@ -1142,32 +1304,42 @@ io.sockets.on('connection', function (socket) {
 	};
 
 	socket.on('order', function (data) {
-		console.log(data);
-		console.log("=======");
-		console.log(typeof data);
+		if (userId < 0) {
+			return;
+		}
+
+		//console.log(data);
+		//console.log("=======");
+		//console.log(typeof data);
 		if (typeof data === 'string') {
 			tp = tryParseJSON(data);
-			console.log("=======");
-			console.log(tp);
+			//console.log("=======");
+			//console.log(tp);
 			if (tp)
 				data = tp;
 		}
 
 		var counter = 0,
 			setPhrase = '',
-			wherePhrase = ' WHERE BOLD_ID = ';
-		for (i in data) {
-			if (counter > 0) {
-				setPhrase += (counter == 1 ? ' ' : ', ') + i + '=' +
-					((typeof data[i] === 'string') ? '\'' + data[i] + '\'' : data[i]);
-			} else {
-				wherePhrase += data[i];
+			wherePhrase = ' WHERE BOLD_ID = ',
+			conditionQuery = dependencyExpression([{type: 'dataUpdate',
+				staticExpression: 'ORDER_DRNUM'}, data]);
+				
+		if (!conditionQuery) {
+			for (i in data) {
+				if (counter > 0) {
+					setPhrase += (counter == 1 ? ' ' : ', ') + i + '=' +
+						((typeof data[i] === 'string') ? '\'' + data[i] + '\'' : data[i]);
+				} else {
+					wherePhrase += data[i];
+				}
+				counter++;
 			}
-			counter++;
+			conditionQuery = setPhrase.length && ('UPDATE Zakaz SET ' + setPhrase + wherePhrase);
 		}
 
-		console.log(setPhrase);
-		setPhrase.length && queryRequest('UPDATE Zakaz SET ' + setPhrase + wherePhrase,
+		console.log(conditionQuery);
+		conditionQuery.length && queryRequest(conditionQuery,
 			function (recordset) {
 				if (recordset && recordset.recordset &&
 					recordset.recordset.length) {
@@ -1176,7 +1348,7 @@ io.sockets.on('connection', function (socket) {
 				emitData('orders');
 			},
 			function (err) {
-				console.log('UPDATE Zakaz SET ' + setPhrase + wherePhrase);
+				console.log('Err of: ' + conditionQuery);
 				emitData('orders');
 			},
 			connection);

@@ -5,9 +5,15 @@
 
 		ctrl.list = [];
 		ctrl.userId = -1;
+		ctrl.depends = {};
 		injectedSocket.on('orders', function (data) {
 			ctrl.list = data.orders;
 			ctrl.userId = data.userId;
+			ctrl.depends = data.depends || {};
+			ctrl.depends.yesno = [
+				{ BOLD_ID: 1, Naimenovanie: 'ДА'},
+				{ BOLD_ID: 0, Naimenovanie: 'НЕТ'}
+			];
 		});
 		
 		injectedSocket.on('abort_connection', function (data) {

@@ -3,43 +3,43 @@
 </h5>
 <div class="row context_injected_orders" data-ctx0="orders-state">
 	<div class="col-1 smallRightPadding">
-		<a href="#" class="state menuItem" ng-click="$ctrl.state()" data-state0="Arhivnyi" data-state0-val="0" data-state1="Zavershyon" data-state1-val="0">Рабочие</a>
+		<a href="#" class="state menuItem" ng-click="$ctrl.state($event)" data-state0="Arhivnyi" data-state0-val="0" data-state1="Zavershyon" data-state1-val="0">Рабочие</a>
 	</div>
 	<div class="col-1">
-		<a href="#" class="state aspect_inject_deleteOrder menuItem" ng-click="$ctrl.state()" data-state0="Arhivnyi"  data-state0-val="1" data-state1="Zavershyon" data-state1-val="1">Архив</a>
+		<a href="#" class="state aspect_inject_deleteOrder menuItem" ng-click="$ctrl.state($event)" data-state0="Arhivnyi"  data-state0-val="1" data-state1="Zavershyon" data-state1-val="1">Архив</a>
 	</div>
 	<div class="col-1">
-		<a href="#" class="state menuItem" ng-click="$ctrl.state()" data-state0="Arhivnyi"  data-state0-val="0" data-state1="Zavershyon" data-state1-val="0" data-aspect0="newOrder">Добавить</a>
+		<a href="#" class="state menuItem" ng-click="$ctrl.state($event)" data-state0="Arhivnyi"  data-state0-val="0" data-state1="Zavershyon" data-state1-val="0" data-aspect0="newOrder">Добавить</a>
 	</div>
 	<div class="col-1" data-ctx0="app-state">
-		<a href="#" class="state menuItem" ng-click="$ctrl.state()">Обновить</a>
+		<a href="#" class="state menuItem" ng-click="$ctrl.state($event)" data-state0="orders"  data-state0-val="1" data-state1="drivers" data-state1-val="1" data-state2="orders_coordinates" data-state2-val="1">Обновить</a>
 	</div>
 </div>
 <div data-ctx0="orders" data-state0="ctx:userId" data-state0-val="{{$ctrl.userId}}">
 	<div class="row" data-ctx0="order">
-		<div class="col-2 smallRightPadding">
+		<div class="col-1 smallRightPadding">
 			
 			<span style="min-width:10px;">
 				Номер
 			</span>
 		</div>
-		<div class="col-2 smallPadding">
-			Телефон
+		<div class="col-2 smallPadding lightGreenDiv">
+			#Телефон, <br/>#Абонентский номер, <br/>#Время подачи, <br/>#Предварительный<br/><nobr>(без водителя)</nobr>
 		</div>
 		<div class="col-2 smallPadding">
-			Адрес		</div>
-		<div class="col-1 smallPadding">Начало</div>
-		<div class="col-1 smallPadding">Позывной</div>
-		<div class="col-1 smallPadding">Стоимость</div>
-		<div class="col-1 smallPadding">Сектор</div>
+			#Район, <br/>#Адрес подачи, <br/>#Адрес окончания	</div>
+		<div class="col-1 smallPadding timeColBack">#Время начала, <br/>#Подтвержден адрес</div>
+		<div class="col-1 smallPadding lightYellowDiv">#Позывной,<br/>#отложить исполнение,<br/>#на дату</div>
+		<div class="col-1 smallPadding">#Стоимость, <br/>#предварит., <br/>#бонусы</div>
+		<div class="col-2 smallPadding limeGreenDiv">#Сектор, <br/><nobr>#~[Найденный сектор]</nobr></div>
 		<div class="col-2 smallPadding">
-			Статус
+			#Статус
 		</div>
 		<div class="col-1 smallPadding">
 					
 		</div>
 	</div>
-	<order-detail ng-repeat="hero in $ctrl.list" hero="hero" on-delete="$ctrl.deleteHero(hero)" 
+	<order-detail ng-repeat="hero in $ctrl.list" hero="hero" depends="$ctrl.depends" on-delete="$ctrl.deleteHero(hero)" 
 		on-update="$ctrl.updateHero(hero, prop, value)">
 	</order-detail>
 </div>
