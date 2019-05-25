@@ -12,12 +12,13 @@ var http = require('http'),
 		cookie: { maxAge: 60000 }
 	}),
 	socketsParams = {},
-	custom = require('./dispatch_custom'), 
+	custom = require('./dispatch_custom'),
+	maps = require('../../taxidispatcher-web-common/maps'),
 	s = 'Str a = ${a.b}';
-	
-	var 
+
+	var
 	a = { b: 3}
-	
+
 	console.log(eval('`' + s + '`'));
 	//sharedsession = require("express-socket.io-session");
 
@@ -80,7 +81,7 @@ var config = custom.config;
 		}, connectonAttempts = 0;
 
 	createConnection();
-	
+
 	function createAMIDBConnPool(connConfig, callBack) {
 		return new sql.ConnectionPool(connConfig, function (err) {
 			// ... error checks
@@ -94,7 +95,7 @@ var config = custom.config;
 			}
 		});
 	}
-	
+
 	function findOrderByPhone(phone, callback) {
 		queryRequest('SELECT TOP 1 ord.BOLD_ID, (CAST(dr.avar1 as varchar(20)) + \',\' + CAST(dr.avar2 as varchar(20)) + \',\' + CAST(dr.avar3 as varchar(20)) + \',\' + CAST(dr.avar4 as varchar(20)) + \',\' + CAST(dr.avar5 as varchar(20)) + \',\' + CAST(dr.avar6 as varchar(20)) + \',\' + CAST(dr.avar7 as varchar(20)) + \',\' + CAST(dr.avar8 as varchar(20)) + \',\' + CAST(dr.avar9 as varchar(20)) + \',\') as vids FROM Zakaz ord INNER JOIN Voditelj dr ON ord.vypolnyaetsya_voditelem = dr.BOLD_ID WHERE   \'' + phone + '\' LIKE (\'%\' + ord.Telefon_klienta + \'%\') AND REMOTE_SET >= 0 AND REMOTE_SET <=8 AND Zavershyon = 0 AND Arhivnyi = 0;',
 			function (recordset) {
@@ -110,7 +111,7 @@ var config = custom.config;
 			connectionAMI
 		);
 	}
-	
+
 	function initAMI() {
 		var AmiIo = require("ami-io"),
 			SilentLogger = new AmiIo.SilentLogger(), //use SilentLogger if you just want remove logs
@@ -134,9 +135,9 @@ var config = custom.config;
 		});
 		amiio.on('event', function(event){
 			var eventName = event.event;
-			if (['Newexten', 
-				'VarSet', 
-				'InvalidAccountID', 
+			if (['Newexten',
+				'VarSet',
+				'InvalidAccountID',
 				'SuccessfulAuth']
 					.indexOf(eventName) < 0) {
 				console.log('AMI: ' + eventName);
@@ -170,14 +171,14 @@ var config = custom.config;
 									}
 								});
 							}
-							
+
 							function redirectCall(channelEvent) {
 								var actionRedirect = new AmiIo.Action.Redirect();
 								actionRedirect.Channel = channelEvent.channel;
 								actionRedirect.Context = 'from-trunk';
 								actionRedirect.Exten = '102';
 								actionRedirect.Priority = 1;
-							
+
 								amiio.send(actionRedirect, function(err, data){
 									if (err){
 										//err will be event like OriginateResponse if (#response !== 'Success')
@@ -192,12 +193,12 @@ var config = custom.config;
 					}
 				}
 			}
-			
+
 		});
 		amiio.connect();
 		amiio.on('connected', function(){
 		});
-	
+
 	}
 
 })();
@@ -291,13 +292,13 @@ function sendAPIRequest(params, success, fail, options) {
 			fail && fail(options);
 			return;
 		}
-	
+
 		if (!body) {
 			console.log('No body!');
 			fail && fail(options);
 			return;
 		}
-		
+
 		console.log(body);
 
 		try {
@@ -313,8 +314,7 @@ function sendAPIRequest(params, success, fail, options) {
 
 //модуль определения координат и сектора заказа по его адресу
 (function() {
-	var sectors = {}, isActiveDetecting = false, minLat = false,
-		minLon = false, maxLat = false, maxLon = false, geocodeAttemptsCnt = 0,
+	var sectors = {}, isActiveDetecting = false, geocodeAttemptsCnt = 0,
 		defaultGeocodingPrefix = '', enableAutoSectorDetect = false,
 		connectionTasks, createConnection = function() {
 			connectonAttempts++;
@@ -329,10 +329,16 @@ function sendAPIRequest(params, success, fail, options) {
 					checkAutoSectorDetectSettings();
 				}
 			);
-		}, connectonAttempts = 0;
+		}, connectonAttempts = 0,
+		bbox = {
+			minLat: false,
+			minLon: false,
+			maxLat: false,
+			maxLon: false
+		};
 
 	createConnection();
-	
+
 	function createTasksDBConnPool(connConfig, callBack) {
 		return new sql.ConnectionPool(connConfig, function (err) {
 			// ... error checks
@@ -346,12 +352,12 @@ function sendAPIRequest(params, success, fail, options) {
 			}
 		});
 	}
-	
+
 	function checkAutoSectorDetectSettings() {
 		queryRequest('SELECT TOP 1 auto_detect_sector_by_addr, geocode_default_prefix FROM Objekt_vyborki_otchyotnosti WHERE Tip_objekta=\'for_drivers\';',
 			function (recordset) {
 				if (recordset && recordset.recordset &&
-					recordset.recordset.length && 
+					recordset.recordset.length &&
 					recordset.recordset.length == 1) {
 					var settingsList = recordset.recordset;
 					//console.log(sectorCoordsList);
@@ -362,7 +368,10 @@ function sendAPIRequest(params, success, fail, options) {
 				}
 
 				if (enableAutoSectorDetect) {
-					getSectorsCoordinates();
+					console.log(maps.ggg);
+					maps.getSectorsCoordinates(sectors, bbox, connectionTasks, function() {
+						setInterval(geocodeOrderAddresses, 3000);
+					});
 				} else {
 					console.log('Auto detect sector is off! Next check after 60 sec...');
 					setTimeout(checkAutoSectorDetectSettings, 60000);
@@ -376,126 +385,6 @@ function sendAPIRequest(params, success, fail, options) {
 			connectionTasks
 		);
 	}
-		
-	function getSectorsCoordinates() {
-		queryRequest('SELECT sc.*, dc.Naimenovanie, al.* FROM Sektor_raboty sc INNER JOIN Spravochnik dc ON sc.BOLD_ID = dc.BOLD_ID INNER JOIN AREA_LINES al ON sc.BOLD_ID = al.SECTOR_ID ORDER BY sc.BOLD_ID ASC, al.order_num ASC',
-			function (recordset) {
-				if (recordset && recordset.recordset &&
-					recordset.recordset.length) {
-					var sectorCoordsList = recordset.recordset;
-					//console.log(sectorCoordsList);
-					sectorCoordsList.forEach(function(sectorCoord) {
-						if (!sectors[sectorCoord.BOLD_ID]) {
-							sectors[sectorCoord.BOLD_ID] = {
-								name: sectorCoord.Naimenovanie,
-								districtId: sectorCoord.district_id,
-								coords: []
-							}
-						}
-						
-						if (minLat === false || minLat > sectorCoord.lat) {
-							minLat = sectorCoord.lat;
-						}
-						
-						if (minLon === false || minLon > sectorCoord.lon) {
-							minLon = sectorCoord.lon;
-						}
-						
-						if (maxLat === false || maxLat < sectorCoord.lat) {
-							maxLat = sectorCoord.lat;
-						}
-						
-						if (maxLon === false || maxLon < sectorCoord.lon) {
-							maxLon = sectorCoord.lon;
-						}
-						
-						sectors[sectorCoord.BOLD_ID].coords.push({
-							lat: sectorCoord.lat,
-							lon: sectorCoord.lon
-						});
-					});
-				}
-				
-				//console.log(sectors);
-				setInterval(geocodeOrderAddresses, 3000);
-			},
-			function (err) {
-				setTimeout(getSectorsCoordinates, 5000);
-				console.log('Err of sectors coordinates request! ' + err);
-			},
-			connectionTasks);
-	}
-	
-	function isPointInsidePolygon (coordsList, xd, yd) {
-		var i1, i2, n, pcount, //int
-			S, S1, S2, S3, x, y, //long
-			flag = false;
-
-		x = Math.round(xd * 1000);
-		y = Math.round(yd * 1000);
-
-		if (!coordsList || !coordsList.length || coordsList.length <= 2) {
-			return false;
-		}
-
-		pcount = coordsList.length;
-		var p = {}, i = 0;
-
-		//for (var i = 0; i < pcount; i++)	{
-		coordsList.forEach(function(coord) {
-			p[i] = {};
-			p[i][1] = Math.round(coord.lat * 1000);
-			p[i][0] = Math.round(coord.lon * 1000);
-			i++;
-		});
-
-		for (n = 0; n < pcount; n++) {
-			
-			flag = false;
-			i1 = n < (pcount - 1) ? (n + 1) : 0;
-			
-			while (!flag) {
-				i2 = i1 + 1;
-				
-				if (i2 >= pcount) {
-					i2 = 0;
-				}
-				
-				if (i2 == (n < (pcount - 1) ? (n + 1) : 0)) {
-					break;
-				}
-
-				S = Math.abs( p[i1][0] * (p[i2][1] - p[n][1]) +
-					p[i2][0] * (p[n][1] - p[i1][1]) +
-					p[n][0]  * (p[i1][1] - p[i2][1]) );
-				S1 = Math.abs( p[i1][0] * (p[i2][1] - y) +
-					p[i2][0] * (y       - p[i1][1]) +
-					x * (p[i1][1] - p[i2][1]) );
-				S2 = Math.abs( p[n][0] * (p[i2][1] - y) +
-					p[i2][0] * (y       - p[n][1]) +
-					x * (p[n][1] - p[i2][1]) );
-				S3 = Math.abs( p[i1][0] * (p[n][1] - y) +
-					p[n][0] * (y       - p[i1][1]) +
-					x * (p[i1][1] - p[n][1]) );
-		
-				if (S == S1 + S2 + S3) {
-					flag = true;
-					break;
-				}
-		
-				i1 = i1 + 1;
-				if (i1 >= pcount) {
-					i1 = 0;
-				}
-			}
-		
-			if (!flag) {
-				break;
-			}
-		}
-	  
-		return flag;
-	}
 
 	function geocodeOrderAddresses() {
 		//console.log('Check orders for geocoded...');
@@ -504,11 +393,11 @@ function sendAPIRequest(params, success, fail, options) {
 			console.log('Sector detect is active... out');
 			return;
 		}
-		
+
 		geocodeAttemptsCnt = 0;
-		
+
 		isActiveDetecting = true;
-		queryRequest('SELECT ord.BOLD_ID, ord.Adres_vyzova_vvodim, ord.district_id, ISNULL(dis.address, \'\') as geocode_addr, ISNULL(dis.default_sector_id, 0) as default_sector_id FROM Zakaz ord LEFT JOIN DISTRICTS dis ON ord.district_id = dis.id WHERE ord.Zavershyon = 0 ' + 
+		queryRequest('SELECT ord.BOLD_ID, ord.Adres_vyzova_vvodim, ord.district_id, ISNULL(dis.address, \'\') as geocode_addr, ISNULL(dis.default_sector_id, 0) as default_sector_id FROM Zakaz ord LEFT JOIN DISTRICTS dis ON ord.district_id = dis.id WHERE ord.Zavershyon = 0 ' +
 			' AND ord.failed_adr_coords_detect = 0 AND ord.detected_sector = -1 AND LEN(ISNULL(ord.Adres_vyzova_vvodim,\'\')) > 2 AND ord.adr_manual_set = 1 ',
 			function (recordset) {
 				//console.log('111');
@@ -516,39 +405,39 @@ function sendAPIRequest(params, success, fail, options) {
 					recordset.recordset.length) {
 					var orderList = recordset.recordset, order;
 					//console.log(orderList);
-					
-					if (minLat === false || minLon === false || 
-						maxLat === false || maxLon === false) {
+
+					if (bbox.minLat === false || bbox.minLon === false ||
+						bbox.maxLat === false || bbox.maxLon === false) {
 
 						isActiveDetecting = false;
 						console.log('Missing bbox!');
 						return;
 					}
-					
+
 					//orderList.forEach(function(order) {
 					order = orderList[0];
 					if (order) {
 						console.log((order.district_id && order.district_id > 0 && order.geocode_addr ? order.geocode_addr : defaultGeocodingPrefix) + ',' + order.Adres_vyzova_vvodim);
 
-						if (minLat === false || minLon === false || 
-							maxLat === false || maxLon === false) {
+						if (bbox.minLat === false || bbox.minLon === false ||
+							bbox.maxLat === false || bbox.maxLon === false) {
 
 							isActiveDetecting = false;
-							setFailOrderSectDetect(order.BOLD_ID, 
+							setFailOrderSectDetect(order.BOLD_ID,
 								order.default_sector_id);
 							console.log('Missing bbox!');
 							return;
 						}
-						
+
 						sendAPIRequest(
 							{
 								url: 'http://search.maps.sputnik.ru/search/addr',
 								qs: {
 									q: (order.district_id && order.district_id > 0 && order.geocode_addr ? order.geocode_addr : defaultGeocodingPrefix) + ',' + order.Adres_vyzova_vvodim//, //
-									//blat: minLat,
-									//blon: maxLon,
-									//tlat: maxLat,
-									//tlon: minLon,
+									//blat: bbox.minLat,
+									//blon: bbox.maxLon,
+									//tlat: bbox.maxLat,
+									//tlon: bbox.minLon,
 									//strict: true
 								}
 							},
@@ -558,10 +447,10 @@ function sendAPIRequest(params, success, fail, options) {
 								orderId: order.BOLD_ID,
 								defaultSectorId: order.default_sector_id,
 								districtId: order.district_id,
-								'minLat': minLat,
-								'minLon': minLon,
-								'maxLat': maxLat,
-								'maxLon': maxLon
+								'minLat': bbox.minLat,
+								'minLon': bbox.minLon,
+								'maxLat': bbox.maxLat,
+								'maxLon': bbox.maxLon
 							}
 						);
 					} else {
@@ -578,66 +467,66 @@ function sendAPIRequest(params, success, fail, options) {
 			},
 			connectionTasks);
 	}
-	
+
 	function geocodeApiFailCallback(options) {
 		isActiveDetecting = false;
 		setFailOrderSectDetect(options.orderId, options.defaultSectorId);
 	}
-	
+
 	function getAddrPointsByFeatureGeometries(featureGeometries, options) {
 		var pointGeometryList = featureGeometries && featureGeometries.length && 			featureGeometries.filter(function(geom) { return geom.type === 'Point'; }), geoPoint, pointCoordinates, pointLat, pointLon, result = false, i;
-			
+
 		if (!(pointGeometryList && pointGeometryList.length)) {
 			return result;
 		}
-			
+
 		for (i = 0; i < pointGeometryList.length; i++) {
 			geoPoint = pointGeometryList[i],
 			pointCoordinates = geoPoint && geoPoint.coordinates;
 			pointLat = pointCoordinates && pointCoordinates.length && pointCoordinates[1];
 			pointLon = pointCoordinates && pointCoordinates.length && pointCoordinates[0];
-			
-			if (pointLat >= options.minLat && pointLat <= options.maxLat && 
+
+			if (pointLat >= options.minLat && pointLat <= options.maxLat &&
 				pointLon >= options.minLon && pointLon <= options.maxLon) {
 				return [pointLon, pointLat];
 			}
 		}
-		
+
 		return result;
 	}
-	
+
 	function hasStreetAddrComponent(feature) {
 		var properties = feature && feature.properties,
 			addressComponents = properties && properties.address_components,
-			withStreetAddresses = addressComponents && addressComponents.length && 
-				addressComponents.filter(function(addrComponent) { 
+			withStreetAddresses = addressComponents && addressComponents.length &&
+				addressComponents.filter(function(addrComponent) {
 					return addrComponent.type === 'street';
 				});
 		return withStreetAddresses && withStreetAddresses.length;
 	}
-	
+
 	function getAddrPointsByFeatureCollection(featureCollection, options, withStreets) {
-		var featuresList = featureCollection && featureCollection.features && featureCollection.features.length && featureCollection.features.filter(function(feat) { 
-			return feat.type === 'Feature' && (!withStreets || hasStreetAddrComponent(feat)); }), 
+		var featuresList = featureCollection && featureCollection.features && featureCollection.features.length && featureCollection.features.filter(function(feat) {
+			return feat.type === 'Feature' && (!withStreets || hasStreetAddrComponent(feat)); }),
 			feature, featureGeometries, i, result = false, points;
-		
+
 		if (!(featuresList && featuresList.length)) {
 			return result;
 		}
-		
+
 		for (i = 0; i < featuresList.length; i++) {
 			feature = featuresList[i];
 			featureGeometries = feature && feature.geometry && feature.geometry.type && feature.geometry.type === 'GeometryCollection' && feature.geometry.geometries;
-			
+
 			points = getAddrPointsByFeatureGeometries(featureGeometries, options);
 			if (points !== false) {
 				return points;
 			}
 		}
-		
+
 		return result;
 	}
-	
+
 	function detectSectorOnGeocodeData(data, options) {
 		var sector, result = data && data.result, districtId = options && options.districtId || -1,
 			orderId = options && options.orderId, isDetected = false,
@@ -645,11 +534,11 @@ function sendAPIRequest(params, success, fail, options) {
 			address = result && result.priority && result.priority === 'address' && result.address && result.address.length && result.address.filter(function(addr) { return addr.type === 'FeatureCollection'; }), featureCollection,
 			pointCoordinates, pointLat = false, pointLon = false,
 			withoutStreetPointLat = false, withoutStreetPointLon = false;
-			
+
 			if (!(address && address.length)) {
 				setFailOrderSectDetect(orderId, defaultSectorId);
 			}
-			
+
 			for (idx = 0; idx < address.length; idx++) {
 				featureCollection = address[idx];
 
@@ -668,7 +557,7 @@ function sendAPIRequest(params, success, fail, options) {
 			/*featuresList = featureCollection && featureCollection.features && featureCollection.features.length && featureCollection.features.filter(function(feat) { return feat.type === 'Feature'; }),
 			feature = featuresList && featuresList.length && featuresList[0],
 			featureGeometries = feature && feature.geometry && feature.geometry.type && feature.geometry.type === 'GeometryCollection' && feature.geometry.geometries,*/
-			
+
 			/*pointGeometryList = featureGeometries && featureGeometries.length && featureGeometries.filter(function(geom) { return geom.type === 'Point'; }),
 			geoPoint = pointGeometryList && pointGeometryList.length && pointGeometryList[0],
 			pointCoordinates = geoPoint && geoPoint.coordinates,*/
@@ -678,7 +567,7 @@ function sendAPIRequest(params, success, fail, options) {
 				console.log('Point lat=' + pointLat + ', lon=' + pointLon);
 				for (i in sectors) {
 					sector = sectors[i];
-					
+
 					if (districtId > 0 && sector.districtId !== districtId) {
 						console.log(sector.districtId + '+++' + districtId);
 						continue;
@@ -686,11 +575,11 @@ function sendAPIRequest(params, success, fail, options) {
 					//console.log(sector.coords);
 					//console.log(isPointInsidePolygon(sector.coords, pointLon, pointLat));
 					//console.log(isPointInsidePolygon(sector.coords, pointLat, pointLon));
-					if (isPointInsidePolygon(sector.coords, pointLon, pointLat)) {
-						console.log('Point lat=' + pointLat + ', lon=' + pointLon + 
+					if (maps.isPointInsidePolygon(sector.coords, pointLon, pointLat)) {
+						console.log('Point lat=' + pointLat + ', lon=' + pointLon +
 							' inside to ' + sector.name);
-						queryRequest('UPDATE Zakaz SET detected_sector = ' + i 
-						+ ', adr_detect_lat = \'' + pointLat + '\', adr_detect_lon = \'' + 
+						queryRequest('UPDATE Zakaz SET detected_sector = ' + i
+						+ ', adr_detect_lat = \'' + pointLat + '\', adr_detect_lon = \'' +
 						pointLon + '\' WHERE BOLD_ID = ' + orderId,
 							function (recordset) {
 								isActiveDetecting = false;
@@ -707,8 +596,8 @@ function sendAPIRequest(params, success, fail, options) {
 				}
 			} else if (withoutStreetPointLat && withoutStreetPointLon && orderId) {
 				console.log('Point without street lat=' + withoutStreetPointLat + ', lon=' + withoutStreetPointLon);
-				queryRequest('UPDATE Zakaz SET failed_adr_coords_detect = 1' + 
-					', adr_detect_lat = \'' + withoutStreetPointLat + '\', adr_detect_lon = \'' + 
+				queryRequest('UPDATE Zakaz SET failed_adr_coords_detect = 1' +
+					', adr_detect_lat = \'' + withoutStreetPointLat + '\', adr_detect_lon = \'' +
 					withoutStreetPointLon + '\' WHERE BOLD_ID = ' + orderId,
 					function (recordset) {
 						isActiveDetecting = false;
@@ -727,23 +616,23 @@ function sendAPIRequest(params, success, fail, options) {
 				isActiveDetecting = false;
 			}
 	}
-	
+
 	function setFailOrderSectDetect(orderId, sector_id) {
-		queryRequest('UPDATE Zakaz SET failed_adr_coords_detect = 1 ' + 
-			(sector_id ? (' ,detected_sector = ' + sector_id + ' ') : ' ') 
+		queryRequest('UPDATE Zakaz SET failed_adr_coords_detect = 1 ' +
+			(sector_id ? (' ,detected_sector = ' + sector_id + ' ') : ' ')
 			+ ' WHERE BOLD_ID = ' + orderId,
 			function (recordset) {
 				isActiveDetecting = false;
 			},
 			function (err) {
 				isActiveDetecting = false;
-				console.log('Err of order FAIL detected sector SET FLAG request!');			
+				console.log('Err of order FAIL detected sector SET FLAG request!');
 			},
 			connectionTasks);
 	}
 
 })();
-	
+
 function queryRequest(sqlText, callbackSuccess, callbackError, connection) {
 		var request = new sql.Request(connection);
 		request.query(sqlText, function (err, recordset) {
@@ -843,9 +732,9 @@ io.sockets.on('connection', function (socket) {
 				},
 			]
 		};
-		
+
 	function getDependListData(entityDependenciesList, callBack, dependData) {
-		
+
 		if (entityDependenciesList && entityDependenciesList.length) {
 			var request = new sql.Request(connection);
 			request.query('select * FROM ' + entityDependenciesList[0].list, //
@@ -856,7 +745,7 @@ io.sockets.on('connection', function (socket) {
 						return;
 					}
 					dependData[entityDependenciesList[0].link] = recordset.recordset;
-					
+
 					if (entityDependenciesList.length > 1) {
 						entityDependenciesList.splice(0,1);
 						getDependListData(entityDependenciesList, callBack, dependData);
@@ -866,14 +755,14 @@ io.sockets.on('connection', function (socket) {
 				});
 		}
 	}
-		
+
 	function getEntityDependData(entity, callBack) {
 		var dependData = {},
-			entityDependenciesList = entityDependencies[entity] && 
+			entityDependenciesList = entityDependencies[entity] &&
 				entityDependencies[entity].filter(function(dependency) {
-					return dependency.type === 'relation';  
+					return dependency.type === 'relation';
 				});
-		
+
 		getDependListData(entityDependenciesList, callBack, dependData);
 		//callBack([]);
 	}
@@ -882,14 +771,14 @@ io.sockets.on('connection', function (socket) {
 		if (!options) {
 			return '';
 		}
-		
+
 		//if (!dependencyType) {
 		//	dependencyType = 'dataSelect';
 		//}
-		
+
 		var dependencies = condDependencies, dependStr = '',
 			isInjectedOptions = false, i;
-		
+
 		console.log('len=' + dependencies.length);
 		//console.log('dependencies: ' + dependencies);
 		console.log('options: ');
@@ -897,13 +786,13 @@ io.sockets.on('connection', function (socket) {
 		//dependencies = dependencies.filter(function(dependency) {
 		//	return dependency.type == dependencyType;
 		//});
-		
+
 		for (i in options) {
 			dependencies = dependencies.filter(function(dependency) {
 				return (typeof dependency[i] !== 'undefined') && (dependency[i] === options[i] || dependency[i] === 'NONE' || dependency[i] === 'INJECT');
 			});
-			
-			//console.log(i + ': ' + options[i] + 
+
+			//console.log(i + ': ' + options[i] +
 			//	', len=' + dependencies.length);
 			if (!isInjectedOptions) {
 				isInjectedOptions |= dependencies.filter(function(dependency) {
@@ -911,29 +800,29 @@ io.sockets.on('connection', function (socket) {
 				}).length;
 			}
 		}
-		
+
 		isInjectedOptions && console.log('is injected!');
-		
+
 		dependencies.forEach(function(dependency) {
-			if (!isInjectedOptions || 
+			if (!isInjectedOptions ||
 				validateDependencyOptions(dependency, options)) {
 
-				dependStr += isInjectedOptions 
+				dependStr += isInjectedOptions
 					? eval('`' + dependency.injectExpression + '`')
 					: dependency.injectExpression;
 			}
 		});
-		
+
 		//console.log('dependStr: [' + dependStr + ']');
 		return dependStr;
 	}
-	
+
 	function validateDependencyOptions(dependency, options) {
 		//console.log(dependency);
 		//console.log(options);
 		for (i in dependency) {
-			
-			if (dependency[i] === 'INJECT' && options && 
+
+			if (dependency[i] === 'INJECT' && options &&
 				(typeof options[i] === 'undefined')) {
 				return false;
 			}
@@ -941,7 +830,7 @@ io.sockets.on('connection', function (socket) {
 		}
 		return true;
 	}
-		
+
 	function decReqTimeout() {
 		if (reqTimeout > 0)
 			reqTimeout--;
@@ -974,7 +863,7 @@ io.sockets.on('connection', function (socket) {
 	}
 
 	var connection = createDBConnPool(socketDBConfig);
-	
+
 	function createDBConnPool(connConfig, callBack) {
 		return new sql.ConnectionPool(connConfig, function (err) {
 			// ... error checks
@@ -986,15 +875,15 @@ io.sockets.on('connection', function (socket) {
 			}
 		});
 	}
-	
+
 	function dependencyExpression(optionsArray) {
 		var dependOptions = {};
-		
+
 		optionsArray.forEach(function(optionItem) {
 			Object.assign(
 				dependOptions, optionItem)
 		});
-		
+
 		//console.log('dependOptions: ');
 		//console.log(dependOptions);
 		return getDependenceInject(dependOptions);
@@ -1023,7 +912,7 @@ io.sockets.on('connection', function (socket) {
 			getEntityDependData('orders', baseCallback);
 		} else if (entity.indexOf('drivers') === 0) {
 			var whereClause = ' where V_rabote = 1 AND Pozyvnoi > 0';
-			queryRequest('SELECT BOLD_ID as id, Pozyvnoi, last_lat, last_lon, Na_pereryve,' + 
+			queryRequest('SELECT BOLD_ID as id, Pozyvnoi, last_lat, last_lon, Na_pereryve,' +
 				' rabotaet_na_sektore, Zanyat_drugim_disp, ABS(DATEDIFF(minute, LAST_STATUS_TIME, GETDATE())) as status_time FROM Voditelj ' + whereClause,
 				function (recordset) {
 					if (recordset && recordset.recordset) {
@@ -1034,15 +923,15 @@ io.sockets.on('connection', function (socket) {
 					}
 				},
 				function (err) {
-				}, 
+				},
 				connection);
 		} else if (entity.indexOf('orders_coordinates') === 0) {
 			var whereClause = ' where Zavershyon = 0 AND Arhivnyi = 0 AND (NOT (ISNULL(rclient_lat, \'\') = \'\' OR ISNULL(rclient_lon, \'\') = \'\') OR NOT (ISNULL(adr_detect_lat, \'\') = \'\' OR ISNULL(adr_detect_lon, \'\') = \'\'))';
 			//console.log('orders_coordinates');
-			queryRequest('select BOLD_ID as id, (CASE WHEN (ISNULL(rclient_lat, \'\') <> \'\') THEN rclient_lat ELSE adr_detect_lat END) as lat, (CASE WHEN (ISNULL(rclient_lat, \'\') <> \'\') THEN rclient_lon ELSE adr_detect_lon END) as lon, Adres_vyzova_vvodim as addr, vypolnyaetsya_voditelem FROM Zakaz' + whereClause, 
+			queryRequest('select BOLD_ID as id, (CASE WHEN (ISNULL(rclient_lat, \'\') <> \'\') THEN rclient_lat ELSE adr_detect_lat END) as lat, (CASE WHEN (ISNULL(rclient_lat, \'\') <> \'\') THEN rclient_lon ELSE adr_detect_lon END) as lon, Adres_vyzova_vvodim as addr, vypolnyaetsya_voditelem FROM Zakaz' + whereClause,
 				function (recordset) {
 					//console.log(recordset.recordset);
-					recordset && recordset.recordset && socket.emit('orders_coordinates', 
+					recordset && recordset.recordset && socket.emit('orders_coordinates',
 						{
 							userId: userId,
 							orders: recordset && recordset.recordset
@@ -1050,17 +939,17 @@ io.sockets.on('connection', function (socket) {
 				},
 				function (err) {
 					console.log(err);
-				}, 
+				},
 				connection);
 		}
 	}
-	
+
 	function checkDriversCoordsUpdated() {
 		queryRequest('SELECT drivers_coord_updated, orders_coord_updated FROM Personal WHERE (drivers_coord_updated = 1 OR orders_coord_updated = 1) AND BOLD_ID = ' + userId ,
 			function (recordset) {
-				if (recordset && recordset.recordset && 
+				if (recordset && recordset.recordset &&
 					recordset.recordset.length) {
-					
+
 					var drivers_coord_updated = recordset.recordset[0].drivers_coord_updated,
 						orders_coord_updated = recordset.recordset[0].orders_coord_updated;
 					queryRequest(
@@ -1071,12 +960,12 @@ io.sockets.on('connection', function (socket) {
 							orders_coord_updated && emitData('orders_coordinates');
 						},
 						function (err) {
-						}, 
+						},
 						connection);
 				}
 			},
 			function (err) {
-			}, 
+			},
 			connection);
 	}
 
@@ -1094,7 +983,7 @@ io.sockets.on('connection', function (socket) {
 			emitData('orders');
 		}
 	});*/
-	
+
 	socket.on('app-state', function (data) {
 		//console.log('app-state');
 		if (data) {
@@ -1171,14 +1060,14 @@ io.sockets.on('connection', function (socket) {
 								recordset.recordset.length) {
 
 								userId = recordset.recordset[0].BOLD_ID;
-								
+
 								if (hasSocketWithUserId(userId)) {
 									abortConnection('Данный пользователь уже подключен!');
 									return;
 								}
-								
+
 								socketsParams[socket.id]['userId'] = userId;
-								
+
 								emitData('orders');
 								console.log('emit drivers');
 								emitData('drivers');
@@ -1193,7 +1082,7 @@ io.sockets.on('connection', function (socket) {
 				}
 			},
 			function (err) {
-			}, 
+			},
 			connection);
 
 		if (authTimeout <= 0) {
@@ -1240,7 +1129,7 @@ io.sockets.on('connection', function (socket) {
 		webProtectedCode = data.code;
 		connection = createDBConnPool(socketDBConfig, identDBConnectCallback);
 	});
-	
+
 	function abortConnection(abortMsg) {
 		socket.emit('abort_connection', {
 			msg: abortMsg,
@@ -1324,7 +1213,7 @@ io.sockets.on('connection', function (socket) {
 			wherePhrase = ' WHERE BOLD_ID = ',
 			conditionQuery = dependencyExpression([{type: 'dataUpdate',
 				staticExpression: 'ORDER_DRNUM'}, data]);
-				
+
 		if (!conditionQuery) {
 			for (i in data) {
 				if (counter > 0) {
