@@ -476,3 +476,17 @@ input[type="radio"] .styled:checked + label::after {
   padding-left: 34px;
   top: 32px;
 }
+
+.hide-text {
+	display: none;
+}
+
+.fixed-state-informer {
+	position: fixed;
+	left: 10px;
+	top: 5px;
+	padding: 5px;
+	background-color: #f00;
+	color: #fff;
+	z-index: 20000;
+}

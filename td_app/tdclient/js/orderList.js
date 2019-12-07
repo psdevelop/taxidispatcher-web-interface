@@ -15,11 +15,22 @@
 				{ BOLD_ID: 0, Naimenovanie: 'НЕТ'}
 			];
 		});
-		
+
+		var refreshOrdersCallback = function() {
+			$('.fixed-state-informer').addClass('hide-text');
+		}
+
+		this.refreshOrdersCallback = refreshOrdersCallback;
+
+		injectedSocket.on('is_order_data_updates', function (data) {
+			console.log('is_order_data_updates');
+			$('.fixed-state-informer').removeClass('hide-text');
+		});
+
 		injectedSocket.on('abort_connection', function (data) {
 			alert('Соединение закрыто! Сообщение: ' + data.msg)
 		});
-	
+
 		this.state = ascInterface.state;
 		//this.elAction = function() {
 		//	ascInterface.state.call(ctrl, event);

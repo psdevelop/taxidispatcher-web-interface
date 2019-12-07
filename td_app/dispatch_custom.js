@@ -1,7 +1,7 @@
 var config = {
 		user: 'disp_server',
 		password: 'disp_server',
-		server: 'localhost', // You can use 'localhost\\instance' to connect to named instance
+		server: '192.168.1.90', // You can use 'localhost\\instance' to connect to named instance
 		database: 'TD5R1',
 
 		options: {
@@ -9,10 +9,10 @@ var config = {
 		}
 	},
 	amiConfig = {
-		port:5038, 
-		host:'91.193.223.21', 
-		login:'radminnode', 
-		password:'kh6hbc96jnu5bys', 
+		port:5038,
+		host:'',
+		login:'radminnode',
+		password:'',
 		encoding: 'ascii'
 	},
 	useAMIClient = false;

@@ -224,6 +224,13 @@ app.get('/', function(req, res) {
 	console.log('kkk');
 });
 
+app.get('/twilio-sip-call', function(req, res) {
+	console.log('kkk');
+	res.setHeader('Content-Type', 'text/html')
+	res.write('<p>views: </p>')
+	res.end()
+});
+
 function findClientsSocket(roomId, namespace) {
 	var res = [],
 		ns = io.of(namespace || "/");    // the default namespace is "/"
@@ -894,7 +901,12 @@ io.sockets.on('connection', function (socket) {
 			return;
 		}
 
-		if (entity.indexOf('orders') === 0 && entity.indexOf('orders_coordinates') !== 0) {
+		if (entity.indexOf('is_order_data_updates') === 0) {
+			console.log('emit is_order_data_updates');
+			socket.emit('is_order_data_updates', {
+				userId: userId
+			});
+		} else if (entity.indexOf('orders') === 0 && entity.indexOf('orders_coordinates') !== 0) {
 			var baseCallback = function(dependData) {
 				//console.log('===========>>>' + dependData);
 				var request = new sql.Request(connection),
@@ -969,6 +981,32 @@ io.sockets.on('connection', function (socket) {
 			connection);
 	}
 
+	function checkDataUpdated() {
+		queryRequest('SELECT EstjVneshnieManip, Prover_vodit ' +
+			'FROM Personal WHERE EstjVneshnieManip = 1 AND BOLD_ID = ' + userId ,
+			function (recordset) {
+				if (recordset && recordset.recordset &&
+					recordset.recordset.length) {
+					console.log('EstjVneshnieManip = 1');
+					var EstjVneshnieManip = recordset.recordset[0].EstjVneshnieManip;
+					queryRequest(
+						'UPDATE Personal SET EstjVneshnieManip = 0 WHERE BOLD_ID = ' + userId,
+						function (recordset) {
+							EstjVneshnieManip && emitData('is_order_data_updates');
+							//console.log('emit updated order data');
+							//EstjVneshnieManip && emitData('orders');
+							//EstjVneshnieManip && emitData('orders_coordinates');
+						},
+						function (err) {
+						},
+						connection);
+				}
+			},
+			function (err) {
+			},
+			connection);
+	}
+
 	/*socket.on('crud', function (data) {
 		console.log(data);
 		if (typeof data === 'string') {
@@ -991,8 +1029,15 @@ io.sockets.on('connection', function (socket) {
 			//data.drivers && console.log('emitData drivers');
 			//data.orders_coordinates && console.log('emitData orders_coordinates');
 			data.orders && emitData('orders');
-			data.drivers && emitData('drivers');
-			data.orders_coordinates && emitData('orders_coordinates');
+
+			if (data.drivers && data.orders_coordinates) {
+				checkDriversCoordsUpdated();
+			} else {
+				data.drivers && emitData('drivers');
+				data.orders_coordinates && emitData('orders_coordinates');
+			}
+			checkDataUpdated();
+
 		}
 	});
 
@@ -1073,7 +1118,8 @@ io.sockets.on('connection', function (socket) {
 								emitData('drivers');
 								console.log('emit orders_coordinates');
 								emitData('orders_coordinates');
-								setInterval(checkDriversCoordsUpdated, 10000);
+								//setInterval(checkDriversCoordsUpdated, 10000);
+								//setInterval(checkDataUpdated, 5000);
 							}
 						},
 						function (err) {
