@@ -13,7 +13,7 @@ var http = require('http'),
 	}),
 	socketsParams = {},
 	custom = require('./dispatch_custom'),
-	maps = require('../../taxidispatcher-web-common/maps'),
+	maps = require('../taxidispatcher-web-common/maps'),
 	s = 'Str a = ${a.b}';
 
 	var
@@ -982,15 +982,15 @@ io.sockets.on('connection', function (socket) {
 	}
 
 	function checkDataUpdated() {
-		queryRequest('SELECT EstjVneshnieManip, Prover_vodit ' +
-			'FROM Personal WHERE EstjVneshnieManip = 1 AND BOLD_ID = ' + userId ,
+		queryRequest('SELECT has_web_orders_updates, Prover_vodit ' +
+			'FROM Personal WHERE has_web_orders_updates = 1 AND BOLD_ID = ' + userId ,
 			function (recordset) {
 				if (recordset && recordset.recordset &&
 					recordset.recordset.length) {
-					console.log('EstjVneshnieManip = 1');
-					var EstjVneshnieManip = recordset.recordset[0].EstjVneshnieManip;
+					console.log('has_web_orders_updates = 1');
+					var EstjVneshnieManip = recordset.recordset[0].has_web_orders_updates;
 					queryRequest(
-						'UPDATE Personal SET EstjVneshnieManip = 0 WHERE BOLD_ID = ' + userId,
+						'UPDATE Personal SET has_web_orders_updates = 0 WHERE BOLD_ID = ' + userId,
 						function (recordset) {
 							EstjVneshnieManip && emitData('is_order_data_updates');
 							//console.log('emit updated order data');
