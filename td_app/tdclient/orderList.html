@@ -17,7 +17,7 @@
 	<div class="hide-text fixed-state-informer">Есть изменения в таблице заказов</span>
 </div>
 <div data-ctx0="orders" data-state0="ctx:userId" data-state0-val="{{$ctrl.userId}}">
-	<div class="row" data-ctx0="order">
+	<div class="row order-row" data-ctx0="order">
 		<div class="col-1 smallRightPadding">
 
 			<span style="min-width:10px;">
@@ -36,9 +36,9 @@
 		<div class="col-2 smallPadding">
 			#Статус
 		</div>
-		<div class="col-1 smallPadding">
+		<!--<div class="col-1 smallPadding">
 
-		</div>
+		</div>-->
 	</div>
 	<order-detail ng-repeat="hero in $ctrl.list" hero="hero" depends="$ctrl.depends" on-delete="$ctrl.deleteHero(hero)"
 		on-update="$ctrl.updateHero(hero, prop, value)">

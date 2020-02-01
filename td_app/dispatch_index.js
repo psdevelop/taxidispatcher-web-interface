@@ -13,7 +13,7 @@ var http = require('http'),
 	}),
 	socketsParams = {},
 	custom = require('./dispatch_custom'),
-	maps = require('../taxidispatcher-web-common/maps'),
+	maps = require('../../taxidispatcher-web-common/maps'),
 	s = 'Str a = ${a.b}';
 
 	var
@@ -736,6 +736,11 @@ io.sockets.on('connection', function (socket) {
 					type: 'relation',
 					list: 'DISTRICTS',
 					link: 'order_district'
+				},
+				{
+					type: 'relation',
+					list: 'PRICE_POLICY',
+					link: 'order_tariff_plan'
 				},
 			]
 		};
