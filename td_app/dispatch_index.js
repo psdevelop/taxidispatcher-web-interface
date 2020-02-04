@@ -312,7 +312,9 @@ function sendAPIRequest(params, success, fail, options) {
 			success && success(JSON.parse(body), options);
 		} catch (e) {
 			console.log('Error of parsing json: ' +
-			body + '\n' + JSON.stringify(params) + e);
+			'\n' + JSON.stringify(params) + '\n' +
+			JSON.stringify(options) + e.message + ' ,line: ' +
+			JSON.stringify(e));
 			fail && fail(options);
 			return;
 		}
@@ -480,87 +482,20 @@ function sendAPIRequest(params, success, fail, options) {
 		setFailOrderSectDetect(options.orderId, options.defaultSectorId);
 	}
 
-	function getAddrPointsByFeatureGeometries(featureGeometries, options) {
-		var pointGeometryList = featureGeometries && featureGeometries.length && 			featureGeometries.filter(function(geom) { return geom.type === 'Point'; }), geoPoint, pointCoordinates, pointLat, pointLon, result = false, i;
-
-		if (!(pointGeometryList && pointGeometryList.length)) {
-			return result;
-		}
-
-		for (i = 0; i < pointGeometryList.length; i++) {
-			geoPoint = pointGeometryList[i],
-			pointCoordinates = geoPoint && geoPoint.coordinates;
-			pointLat = pointCoordinates && pointCoordinates.length && pointCoordinates[1];
-			pointLon = pointCoordinates && pointCoordinates.length && pointCoordinates[0];
-
-			if (pointLat >= options.minLat && pointLat <= options.maxLat &&
-				pointLon >= options.minLon && pointLon <= options.maxLon) {
-				return [pointLon, pointLat];
-			}
-		}
-
-		return result;
-	}
-
-	function hasStreetAddrComponent(feature) {
-		var properties = feature && feature.properties,
-			addressComponents = properties && properties.address_components,
-			withStreetAddresses = addressComponents && addressComponents.length &&
-				addressComponents.filter(function(addrComponent) {
-					return addrComponent.type === 'street';
-				});
-		return withStreetAddresses && withStreetAddresses.length;
-	}
-
-	function getAddrPointsByFeatureCollection(featureCollection, options, withStreets) {
-		var featuresList = featureCollection && featureCollection.features && featureCollection.features.length && featureCollection.features.filter(function(feat) {
-			return feat.type === 'Feature' && (!withStreets || hasStreetAddrComponent(feat)); }),
-			feature, featureGeometries, i, result = false, points;
-
-		if (!(featuresList && featuresList.length)) {
-			return result;
-		}
-
-		for (i = 0; i < featuresList.length; i++) {
-			feature = featuresList[i];
-			featureGeometries = feature && feature.geometry && feature.geometry.type && feature.geometry.type === 'GeometryCollection' && feature.geometry.geometries;
-
-			points = getAddrPointsByFeatureGeometries(featureGeometries, options);
-			if (points !== false) {
-				return points;
-			}
-		}
-
-		return result;
-	}
-
 	function detectSectorOnGeocodeData(data, options) {
-		var sector, result = data && data.result, districtId = options && options.districtId || -1,
+		var sector, districtId = options && options.districtId || -1,
 			orderId = options && options.orderId, isDetected = false,
-			defaultSectorId = options && options.defaultSectorId, idx,
-			address = result && result.priority && result.priority === 'address' && result.address && result.address.length && result.address.filter(function(addr) { return addr.type === 'FeatureCollection'; }), featureCollection,
-			pointCoordinates, pointLat = false, pointLon = false,
-			withoutStreetPointLat = false, withoutStreetPointLon = false;
+			defaultSectorId = options && options.defaultSectorId;
 
-			if (!(address && address.length)) {
+			var parseResult = maps.parseCoordinatesFromGeocodeData(data, options);
+			if (parseResult.emptyAddress) {
 				setFailOrderSectDetect(orderId, defaultSectorId);
 			}
 
-			for (idx = 0; idx < address.length; idx++) {
-				featureCollection = address[idx];
+			var pointLat = parseResult.pointLat, pointLon = parseResult.pointLon,
+				withoutStreetPointLat = parseResult.withoutStreetPointLat,
+				withoutStreetPointLon = parseResult.withoutStreetPointLon;
 
-				pointCoordinates = getAddrPointsByFeatureCollection(featureCollection, options, true);
-				if (pointCoordinates !== false && pointCoordinates && pointCoordinates.length && pointLat === false && pointLon === false) {
-					pointLat = pointCoordinates && pointCoordinates.length && pointCoordinates[1];
-					pointLon = pointCoordinates && pointCoordinates.length && pointCoordinates[0];
-				}
-
-				pointCoordinates = getAddrPointsByFeatureCollection(featureCollection, options, false);
-				if (pointCoordinates !== false && pointCoordinates && pointCoordinates.length && withoutStreetPointLat === false && withoutStreetPointLon === false) {
-					withoutStreetPointLat = pointCoordinates && pointCoordinates.length && pointCoordinates[1];
-					withoutStreetPointLon = pointCoordinates && pointCoordinates.length && pointCoordinates[0];
-				}
-			}
 			/*featuresList = featureCollection && featureCollection.features && featureCollection.features.length && featureCollection.features.filter(function(feat) { return feat.type === 'Feature'; }),
 			feature = featuresList && featuresList.length && featuresList[0],
 			featureGeometries = feature && feature.geometry && feature.geometry.type && feature.geometry.type === 'GeometryCollection' && feature.geometry.geometries,*/
@@ -1293,6 +1228,50 @@ io.sockets.on('connection', function (socket) {
 			},
 			connection);
 	});
+
+	socket.on('get-addr-coords', function (data) {
+		console.log('on get-addr-coords: ' + JSON.stringify(data));
+		sendAPIRequest(
+			{
+				url: 'http://search.maps.sputnik.ru/search/addr',
+				qs: {
+					q: data.address
+				}
+			},
+			detectCoordsByAddr,
+			null,
+			{
+				'minLat': -300,
+				'minLon': -300,
+				'maxLat': 300,
+				'maxLon': 300,
+				'data': data
+			}
+		);
+	});
+
+	function detectCoordsByAddr(data, options) {
+		var parseResult = maps.parseCoordinatesFromGeocodeData(data, options);
+		if (parseResult.emptyAddress) {
+			setFailOrderSectDetect(orderId, defaultSectorId);
+		}
+
+		var pointLat = parseResult.pointLat, pointLon = parseResult.pointLon,
+			withoutStreetPointLat = parseResult.withoutStreetPointLat,
+			withoutStreetPointLon = parseResult.withoutStreetPointLon;
+
+			if (pointLat && pointLon) {
+				console.log('Point from front lat=' + pointLat + ', lon=' + pointLon);
+				var resultData = {
+					lat: pointLat,
+					lon: pointLon,
+					mode: options.data.mode,
+					address: options.data.address
+				};
+				socket.emit('detected-addr-coords', resultData);
+				socket.emit('planned-orders', resultData);
+			}
+	}
 
 	socket.on('disconnect', function () {
 		socketsParams[socket.id] = {};

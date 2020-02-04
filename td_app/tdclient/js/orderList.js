@@ -31,6 +31,26 @@
 			alert('Соединение закрыто! Сообщение: ' + data.msg)
 		});
 
+		this.showMapOrderAddForm = function() {
+			$('#map-add-form').toggleClass('hidden_form');
+		};
+
+		this.findCoordByAdr = function(e, id) {
+			injectedSocket.emit('get-addr-coords', {
+				mode: id,
+				address: $('#' + id).val()
+			})
+		};
+
+		injectedSocket.on('detected-addr-coords', function (data) {
+			$('#' + data.mode + '__coords').html('lat: ' + data.lat +
+				', lon: ' + data.lon);
+		});
+
+		this.findCoordOnMap = function(e, id) {
+
+		};
+
 		this.state = ascInterface.state;
 		//this.elAction = function() {
 		//	ascInterface.state.call(ctrl, event);

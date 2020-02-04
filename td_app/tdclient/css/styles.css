@@ -500,3 +500,17 @@ input[type="radio"] .styled:checked + label::after {
 	margin-left: 0px;
 	margin-right: 0px;
 }
+
+.hidden_form {
+	display: none;
+}
+
+.address-input {
+	width: 250px;
+}
+
+#map-add-form {
+	padding: 5px;
+	margin: 10px 10px;
+	background-color: #33CC66;
+}
