@@ -1,7 +1,8 @@
 (function(angular) {
 	'use strict';
 	function OrderListController($scope, $element, $attrs, injectedSocket, ascInterface) {
-		var ctrl = this;
+		var ctrl = this,
+				routeCoords = [ null, null ];
 
 		ctrl.list = [];
 		ctrl.userId = -1;
@@ -39,12 +40,25 @@
 			injectedSocket.emit('get-addr-coords', {
 				mode: id,
 				address: $('#' + id).val()
-			})
+			});
 		};
 
 		injectedSocket.on('detected-addr-coords', function (data) {
 			$('#' + data.mode + '__coords').html('lat: ' + data.lat +
 				', lon: ' + data.lon);
+			var routeCoordsIdx = data.mode.indexOf('start-adr') >= 0 ? 0 : 1,
+			 secCoordIdx = routeCoordsIdx ? 0 : 1;
+			routeCoords[routeCoordsIdx] = {
+				lat: data.lat,
+				lon: data.lon
+			};
+			if (routeCoords[secCoordIdx] !== null) {
+				injectedSocket.emit('get-route', routeCoords);
+			}
+		});
+
+		injectedSocket.on('get-route-result', function (data) {
+			alert(JSON.stringify(data));
 		});
 
 		this.findCoordOnMap = function(e, id) {

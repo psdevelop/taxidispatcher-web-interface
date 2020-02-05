@@ -1273,6 +1273,31 @@ io.sockets.on('connection', function (socket) {
 			}
 	}
 
+	socket.on('get-route', function (data) {
+		sendAPIRequest(
+			{
+				url: 'http://routes.maps.sputnik.ru/osrm/router/viaroute',
+				qs: {
+					loc: '{' + data[0].lat + ',' + data[0].lon + '}',
+					loc: '{' + data[1].lat + ',' + data[1].lon + '}'
+				}
+			},
+			buildRouteCallback,
+			null,
+			{
+				'minLat': -300,
+				'minLon': -300,
+				'maxLat': 300,
+				'maxLon': 300,
+				'data': data
+			}
+		);
+	});
+
+	function buildRouteCallback(data, options) {
+		socket.emit('get-route-result', data);
+	}
+
 	socket.on('disconnect', function () {
 		socketsParams[socket.id] = {};
 		console.log('user disconnected');
