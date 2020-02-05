@@ -58,7 +58,16 @@
 		});
 
 		injectedSocket.on('get-route-result', function (data) {
-			alert(JSON.stringify(data));
+			//alert(JSON.stringify(data));
+			if (!data || !data.route_summary) {
+				$('#route-build-result').text('Не найдено маршрута!');
+				return;
+			}
+
+			var routeSummary = data.route_summary;
+			$('#route-build-result').text('Расстояние: ' + (routeSummary.total_distance/1000).toFixed(2) +
+				' км., ' + 'время: ' + (routeSummary.total_time/60).toFixed(2) + 'мин.');
+			$('#new-order-from-route-button').removeClass('hidden_button');
 		});
 
 		this.findCoordOnMap = function(e, id) {

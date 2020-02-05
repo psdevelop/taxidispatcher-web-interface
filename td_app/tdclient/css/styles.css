@@ -501,7 +501,7 @@ input[type="radio"] .styled:checked + label::after {
 	margin-right: 0px;
 }
 
-.hidden_form {
+.hidden_form, .hidden_button {
 	display: none;
 }
 

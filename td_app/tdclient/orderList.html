@@ -1,39 +1,51 @@
 <h5 class="bg-light text-dark">
 	Заказы
 </h5>
-<div id="map-add-form" class="row hidden_form">
-	<div class="col-6">
-		<div class="row">
-			<input placeholder="Откуда, например: Москва, Тверская улица 15"/
-				class="address-input" id="start-adr" value="Анапа, Маяковского 47" />
-			<a href="#" class="menuItem" ng-click="$ctrl.findCoordByAdr($event, 'start-adr')">
-				Искать
-			</a>
-			<a href="#" class="menuItem" ng-click="$ctrl.findCoordOnMap($event, 'start-adr')">
-				На карте
-			</a>
-		</div>
-		<div class="row">
-			<span id="start-adr__coords"></span>
-		</div>
-	</div>
-	<div class="col-6">
-		<div class="row">
-			<input placeholder="Куда, например: Москва, Тверская улица 15"
-				class="address-input" id="end-adr" value="Анапа, Ленина 30" />
-			<a href="#" class="menuItem" ng-click="$ctrl.findCoordByAdr($event, 'end-adr')">
-				Искать
-			</a>
-			<a href="#" class="menuItem" ng-click="$ctrl.findCoordOnMap($event, 'end-adr')">
-				На карте
-			</a>
-		</div>
-		<div class="row">
-			<span id="end-adr__coords"></span>
-		</div>
-	</div>
-</div>
+
 <div class="row context_injected_orders" data-ctx0="orders-state">
+	<div id="map-add-form" class="row hidden_form col-12">
+		<div class="col-6">
+			<div class="row">
+				<input placeholder="Откуда, например: Москва, Тверская улица 15"/
+					class="address-input" id="start-adr" value="Анапа, Маяковского 47" />
+				<a href="#" class="menuItem" ng-click="$ctrl.findCoordByAdr($event, 'start-adr')">
+					Искать
+				</a>
+				<a href="#" class="menuItem" ng-click="$ctrl.findCoordOnMap($event, 'start-adr')">
+					На карте
+				</a>
+			</div>
+			<div class="row">
+				<span id="start-adr__coords"></span>
+			</div>
+		</div>
+		<div class="col-6">
+			<div class="row">
+				<input placeholder="Куда, например: Москва, Тверская улица 15"
+					class="address-input" id="end-adr" value="Анапа, Ленина 30" />
+				<a href="#" class="menuItem" ng-click="$ctrl.findCoordByAdr($event, 'end-adr')">
+					Искать
+				</a>
+				<a href="#" class="menuItem" ng-click="$ctrl.findCoordOnMap($event, 'end-adr')">
+					На карте
+				</a>
+			</div>
+			<div class="row">
+				<span id="end-adr__coords"></span>
+			</div>
+		</div>
+		<div class="row col-12">
+			<div class="col-6">
+				<span id="route-build-result"/>
+			</div>
+			<div class="col-6">
+				<a id="new-order-from-route-button" href="#" class="state menuItem hidden_button"
+					ng-click="$ctrl.state($event)" data-state0="Arhivnyi"
+					data-state0-val="0" data-state1="Zavershyon" data-state1-val="0"
+					data-aspect0="newOrderFromRoute">Создать заказ из расчета</a>
+			</div>
+		</div>
+	</div>
 	<div class="col-1 smallRightPadding">
 		<a href="#" class="state menuItem" ng-click="$ctrl.state($event)" data-state0="Arhivnyi" data-state0-val="0" data-state1="Zavershyon" data-state1-val="0">Рабочие</a>
 	</div>

@@ -1164,6 +1164,7 @@ io.sockets.on('connection', function (socket) {
 	});
 
 	var newOrder = function (data) {
+		//console.log('newOrder: ====================>>>>>>>>>>>>>>' + JSON.stringify(data));
 		queryRequest('EXEC	[dbo].[InsertOrderWithParamsRDispatcher] @adres = N\'\', @enadres = N\'\',@phone = N\'\',@disp_id = -1, @status = 0, @color_check = 0, @op_order = 0, @gsm_detect_code = 0,@deny_duplicate = 0, @colored_new = 0, @ab_num = N\'\', @client_id = -1, @ord_num = 0,@order_id = 0',
 						function (recordset) {
 							emitData('orders');
@@ -1274,13 +1275,13 @@ io.sockets.on('connection', function (socket) {
 	}
 
 	socket.on('get-route', function (data) {
+		var routeUrl = 'http://routes.maps.sputnik.ru/osrm/router/viaroute?loc=' +
+			data[0].lat + ',' + data[0].lon + '&loc=' +
+			data[1].lat + ',' + data[1].lon;
+		console.log('routeUrl: ' + routeUrl);
 		sendAPIRequest(
 			{
-				url: 'http://routes.maps.sputnik.ru/osrm/router/viaroute',
-				qs: {
-					loc: '{' + data[0].lat + ',' + data[0].lon + '}',
-					loc: '{' + data[1].lat + ',' + data[1].lon + '}'
-				}
+				url: routeUrl
 			},
 			buildRouteCallback,
 			null,
