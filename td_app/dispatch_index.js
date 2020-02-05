@@ -14,7 +14,8 @@ var http = require('http'),
 	socketsParams = {},
 	custom = require('./dispatch_custom'),
 	maps = require('../../taxidispatcher-web-common/maps'),
-	s = 'Str a = ${a.b}';
+	s = 'Str a = ${a.b}',
+	sectors = {};
 
 	var
 	a = { b: 3}
@@ -323,7 +324,7 @@ function sendAPIRequest(params, success, fail, options) {
 
 //модуль определения координат и сектора заказа по его адресу
 (function() {
-	var sectors = {}, isActiveDetecting = false, geocodeAttemptsCnt = 0,
+	var isActiveDetecting = false, geocodeAttemptsCnt = 0,
 		defaultGeocodingPrefix = '', enableAutoSectorDetect = false,
 		connectionTasks, createConnection = function() {
 			connectonAttempts++;
@@ -1296,6 +1297,19 @@ io.sockets.on('connection', function (socket) {
 	});
 
 	function buildRouteCallback(data, options) {
+		var i, j;
+		for (j in [0, 1]) {
+			for (i in sectors) {
+				sector = sectors[i];
+				if (maps.isPointInsidePolygon(sector.coords, options.data[j].lon, options.data[j].lat)) {
+					options.data[j].sector_id = i;
+					options.data[j].sector_name = sector.name;
+					break;
+				}
+			}
+		}
+
+		data['custom_options'] = options;
 		socket.emit('get-route-result', data);
 	}
 

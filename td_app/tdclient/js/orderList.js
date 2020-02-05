@@ -61,13 +61,23 @@
 			//alert(JSON.stringify(data));
 			if (!data || !data.route_summary) {
 				$('#route-build-result').text('Не найдено маршрута!');
-				return;
+			} else {
+				var routeSummary = data.route_summary;
+				$('#route-build-result').text('Расстояние: ' + (routeSummary.total_distance/1000).toFixed(2) +
+					' км., ' + 'время: ' + (routeSummary.total_time/60).toFixed(2) + 'мин.');
+				$('#new-order-from-route-button').removeClass('hidden_button');
 			}
 
-			var routeSummary = data.route_summary;
-			$('#route-build-result').text('Расстояние: ' + (routeSummary.total_distance/1000).toFixed(2) +
-				' км., ' + 'время: ' + (routeSummary.total_time/60).toFixed(2) + 'мин.');
-			$('#new-order-from-route-button').removeClass('hidden_button');
+			if (data && data.custom_options && data.custom_options.data &&
+				data.custom_options.data[0].sector_id && data.custom_options.data[1].sector_id) {
+				var sectorsData = data.custom_options.data;
+				$('#sectors-route-result').text('Начальный сектор: ' +
+					sectorsData[0].sector_name + ', конечный сектор: ' +
+					sectorsData[1].sector_name);
+				$('#new-order-from-route-button').removeClass('hidden_button');
+			} else {
+				$('#sectors-route-result').text('Не найдено попадания обеих точек в сектора!');
+			}
 		});
 
 		this.findCoordOnMap = function(e, id) {
