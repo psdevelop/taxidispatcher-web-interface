@@ -314,10 +314,81 @@ function sendAPIRequest(params, success, fail, options) {
 		} catch (e) {
 			console.log('Error of parsing json: ' +
 			'\n' + JSON.stringify(params) + '\n' +
-			JSON.stringify(options) + e.message + ' ,line: ' +
+			e.message + ' ,line: ' +
 			JSON.stringify(e));
 			fail && fail(options);
 			return;
+		}
+	});
+}
+
+function buildRoute(data, orderId, socketId) {
+	var routeUrl = 'http://routes.maps.sputnik.ru/osrm/router/viaroute?loc=' +
+		data[0].lat + ',' + data[0].lon + '&loc=' +
+		data[1].lat + ',' + data[1].lon;
+	console.log('routeUrl: ' + routeUrl);
+	sendAPIRequest(
+		{
+			url: routeUrl
+		},
+		buildRouteCallback,
+		null,
+		{
+			'minLat': -300,
+			'minLon': -300,
+			'maxLat': 300,
+			'maxLon': 300,
+			'data': data,
+			'orderId': orderId,
+			'socketId': socketId
+		}
+	);
+}
+
+var connectionGlobal = createDBConnPool(config);
+
+function buildRouteCallback(data, options) {
+	var orderId = options.orderId;
+	if (orderId <= 0) {
+		var i, j;
+		for (j in [0, 1]) {
+			for (i in sectors) {
+				sector = sectors[i];
+				if (maps.isPointInsidePolygon(sector.coords, options.data[j].lon, options.data[j].lat)) {
+					options.data[j].sector_id = i;
+					options.data[j].sector_name = sector.name;
+					break;
+				}
+			}
+		}
+
+		data['custom_options'] = options;
+		socketsParams[options.socketId]['socket'].emit('get-route-result', data);
+	} else if (data && data.route_summary) {
+		var routeSummary = data.route_summary;
+		queryRequest('UPDATE Zakaz SET ' +
+			' route_distance = ' + (routeSummary.total_distance || 0) +
+			', route_time = ' + (routeSummary.total_time || 0) +
+			' WHERE BOLD_ID = ' + orderId,
+			function (recordset) {
+				console.log('Success order set route build parameters!' +
+					routeSummary.total_time + '=================' + JSON.stringify(routeSummary));
+			},
+			function (err) {
+				console.log('Err of order set route build parameters!');
+			},
+			connectionGlobal);
+	}
+}
+
+function createDBConnPool(connConfig, callBack) {
+	return new sql.ConnectionPool(connConfig, function (err) {
+		// ... error checks
+		if (err) {
+			console.log('Err of create db pool: ' + err.message);                      // Canceled.
+			console.log(err.code);
+		} else {
+			callBack && callBack();
 		}
 	});
 }
@@ -326,6 +397,7 @@ function sendAPIRequest(params, success, fail, options) {
 (function() {
 	var isActiveDetecting = false, geocodeAttemptsCnt = 0,
 		defaultGeocodingPrefix = '', enableAutoSectorDetect = false,
+		enableAutoBuildRoute = false,
 		connectionTasks, createConnection = function() {
 			connectonAttempts++;
 			if (connectonAttempts > 5) {
@@ -364,7 +436,8 @@ function sendAPIRequest(params, success, fail, options) {
 	}
 
 	function checkAutoSectorDetectSettings() {
-		queryRequest('SELECT TOP 1 auto_detect_sector_by_addr, geocode_default_prefix FROM Objekt_vyborki_otchyotnosti WHERE Tip_objekta=\'for_drivers\';',
+		queryRequest('SELECT TOP 1 auto_detect_sector_by_addr, geocode_default_prefix, ' +
+			'auto_build_route FROM Objekt_vyborki_otchyotnosti WHERE Tip_objekta=\'for_drivers\';',
 			function (recordset) {
 				if (recordset && recordset.recordset &&
 					recordset.recordset.length &&
@@ -374,6 +447,7 @@ function sendAPIRequest(params, success, fail, options) {
 					settingsList.forEach(function(setting) {
 						enableAutoSectorDetect = setting.auto_detect_sector_by_addr;
 						defaultGeocodingPrefix = setting.geocode_default_prefix;
+						enableAutoBuildRoute = setting.auto_build_route;
 					});
 				}
 
@@ -407,13 +481,17 @@ function sendAPIRequest(params, success, fail, options) {
 		geocodeAttemptsCnt = 0;
 
 		isActiveDetecting = true;
-		queryRequest('SELECT ord.BOLD_ID, ord.Adres_vyzova_vvodim, ord.district_id, ISNULL(dis.address, \'\') as geocode_addr, ISNULL(dis.default_sector_id, 0) as default_sector_id FROM Zakaz ord LEFT JOIN DISTRICTS dis ON ord.district_id = dis.id WHERE ord.Zavershyon = 0 ' +
-			' AND ord.failed_adr_coords_detect = 0 AND ord.detected_sector = -1 AND LEN(ISNULL(ord.Adres_vyzova_vvodim,\'\')) > 2 AND ord.adr_manual_set = 1 ',
+		queryRequest('SELECT ord.BOLD_ID, ord.Adres_vyzova_vvodim, ord.district_id, ISNULL(dis.address, \'\') as geocode_addr, ' +
+			' ISNULL(dis.default_sector_id, 0) as default_sector_id, ord.end_adres, ' +
+			' (CASE WHEN (ord.failed_adr_coords_detect = 0 AND ord.detected_sector = -1 AND LEN(ISNULL(ord.Adres_vyzova_vvodim,\'\')) > 2) THEN 1 ELSE 0 END) as is_start ' +
+			' FROM Zakaz ord LEFT JOIN DISTRICTS dis ON ord.district_id = dis.id WHERE ord.Zavershyon = 0 ' +
+			' AND ord.adr_manual_set = 1 AND (ord.failed_adr_coords_detect = 0 AND ord.detected_sector = -1 AND LEN(ISNULL(ord.Adres_vyzova_vvodim,\'\')) > 2) OR ' +
+			' (ord.failed_end_adr_coords_detect = 0 AND ord.detected_end_sector = -1 AND LEN(ISNULL(ord.end_adres,\'\')) > 2)',
 			function (recordset) {
 				//console.log('111');
 				if (recordset && recordset.recordset &&
 					recordset.recordset.length) {
-					var orderList = recordset.recordset, order;
+					var orderList = recordset.recordset, order, isStart, sendAddress;
 					//console.log(orderList);
 
 					if (bbox.minLat === false || bbox.minLon === false ||
@@ -426,15 +504,19 @@ function sendAPIRequest(params, success, fail, options) {
 
 					//orderList.forEach(function(order) {
 					order = orderList[0];
+					isStart = order.is_start ? true : false;
+					sendAddress = isStart ? order.Adres_vyzova_vvodim : order.end_adres;
 					if (order) {
-						console.log((order.district_id && order.district_id > 0 && order.geocode_addr ? order.geocode_addr : defaultGeocodingPrefix) + ',' + order.Adres_vyzova_vvodim);
+						console.log((isStart ? 'Адрес отправления: ' : 'Адрес назначения: ') +
+							(order.district_id && order.district_id > 0 && order.geocode_addr && !isStart ?
+							order.geocode_addr : defaultGeocodingPrefix) + ',' + sendAddress);
 
 						if (bbox.minLat === false || bbox.minLon === false ||
 							bbox.maxLat === false || bbox.maxLon === false) {
 
 							isActiveDetecting = false;
 							setFailOrderSectDetect(order.BOLD_ID,
-								order.default_sector_id);
+								order.default_sector_id, isStart);
 							console.log('Missing bbox!');
 							return;
 						}
@@ -443,7 +525,8 @@ function sendAPIRequest(params, success, fail, options) {
 							{
 								url: 'http://search.maps.sputnik.ru/search/addr',
 								qs: {
-									q: (order.district_id && order.district_id > 0 && order.geocode_addr ? order.geocode_addr : defaultGeocodingPrefix) + ',' + order.Adres_vyzova_vvodim//, //
+									q: (order.district_id && order.district_id > 0 && order.geocode_addr && !isStart
+											? order.geocode_addr : defaultGeocodingPrefix) + ',' + sendAddress
 									//blat: bbox.minLat,
 									//blon: bbox.maxLon,
 									//tlat: bbox.maxLat,
@@ -460,7 +543,8 @@ function sendAPIRequest(params, success, fail, options) {
 								'minLat': bbox.minLat,
 								'minLon': bbox.minLon,
 								'maxLat': bbox.maxLat,
-								'maxLon': bbox.maxLon
+								'maxLon': bbox.maxLon,
+								'isStart': isStart
 							}
 						);
 					} else {
@@ -480,22 +564,23 @@ function sendAPIRequest(params, success, fail, options) {
 
 	function geocodeApiFailCallback(options) {
 		isActiveDetecting = false;
-		setFailOrderSectDetect(options.orderId, options.defaultSectorId);
+		setFailOrderSectDetect(options.orderId, options.defaultSectorId, options.isStart);
 	}
 
 	function detectSectorOnGeocodeData(data, options) {
 		var sector, districtId = options && options.districtId || -1,
 			orderId = options && options.orderId, isDetected = false,
-			defaultSectorId = options && options.defaultSectorId;
+			defaultSectorId = options && options.defaultSectorId,
+			isStart = options.isStart;
 
 			var parseResult = maps.parseCoordinatesFromGeocodeData(data, options);
 			if (parseResult.emptyAddress) {
-				setFailOrderSectDetect(orderId, defaultSectorId);
+				setFailOrderSectDetect(orderId, defaultSectorId, options.isStart);
 			}
 
 			var pointLat = parseResult.pointLat, pointLon = parseResult.pointLon,
-				withoutStreetPointLat = parseResult.withoutStreetPointLat,
-				withoutStreetPointLon = parseResult.withoutStreetPointLon;
+				withoStreetLat = parseResult.withoutStreetPointLat,
+				withoStreetLon = parseResult.withoutStreetPointLon;
 
 			/*featuresList = featureCollection && featureCollection.features && featureCollection.features.length && featureCollection.features.filter(function(feat) { return feat.type === 'Feature'; }),
 			feature = featuresList && featuresList.length && featuresList[0],
@@ -515,20 +600,24 @@ function sendAPIRequest(params, success, fail, options) {
 						console.log(sector.districtId + '+++' + districtId);
 						continue;
 					}
-					//console.log(sector.coords);
-					//console.log(isPointInsidePolygon(sector.coords, pointLon, pointLat));
-					//console.log(isPointInsidePolygon(sector.coords, pointLat, pointLon));
+
 					if (maps.isPointInsidePolygon(sector.coords, pointLon, pointLat)) {
 						console.log('Point lat=' + pointLat + ', lon=' + pointLon +
 							' inside to ' + sector.name);
-						queryRequest('UPDATE Zakaz SET detected_sector = ' + i
-						+ ', adr_detect_lat = \'' + pointLat + '\', adr_detect_lon = \'' +
-						pointLon + '\' WHERE BOLD_ID = ' + orderId,
+						queryRequest('UPDATE Zakaz SET ' +
+						(isStart ? 'detected_sector' : 'detected_end_sector') + ' = ' + i
+						+ ( isStart ? (', adr_detect_lat = \'' + pointLat + '\', adr_detect_lon = \'' +
+							pointLon + '\' ' + ', depr_lat = ' + pointLat + ', depr_lon = ' + pointLon)
+							: (', dest_lat = ' + pointLat + ', dest_lon = ' + pointLon)) +
+						' WHERE BOLD_ID = ' + orderId,
 							function (recordset) {
+								if (enableAutoBuildRoute) {
+									checkRouteBuild(orderId);
+								}
 								isActiveDetecting = false;
 							},
 							function (err) {
-								setFailOrderSectDetect(orderId, defaultSectorId);
+								setFailOrderSectDetect(orderId, defaultSectorId, options.isStart);
 								console.log('Err of order detected sector assign request! ' + err);
 							},
 							connectionTasks);
@@ -537,16 +626,20 @@ function sendAPIRequest(params, success, fail, options) {
 						break;
 					}
 				}
-			} else if (withoutStreetPointLat && withoutStreetPointLon && orderId) {
-				console.log('Point without street lat=' + withoutStreetPointLat + ', lon=' + withoutStreetPointLon);
-				queryRequest('UPDATE Zakaz SET failed_adr_coords_detect = 1' +
-					', adr_detect_lat = \'' + withoutStreetPointLat + '\', adr_detect_lon = \'' +
-					withoutStreetPointLon + '\' WHERE BOLD_ID = ' + orderId,
+			} else if (withoStreetLat && withoStreetLon && orderId) {
+				////', adr_detect_lat = \'' + withoStreetLat + '\', adr_detect_lon = \'' + withoStreetLon + '\' ' +
+				console.log('Point without street lat=' + withoStreetLat + ', lon=' + withoStreetLon);
+				queryRequest('UPDATE Zakaz SET ' +
+					(isStart ? 'failed_adr_coords_detect' : 'failed_end_adr_coords_detect') + ' = 1' +
+					( isStart ? (', adr_detect_lat = \'' + withoStreetLat + '\', adr_detect_lon = \'' +
+						withoStreetLon + '\' ' + ', depr_lat = ' + withoStreetLat + ', depr_lon = ' + withoStreetLon)
+						: (', dest_lat = ' + withoStreetLat + ', dest_lon = ' + withoStreetLon)) +
+					' WHERE BOLD_ID = ' + orderId,
 					function (recordset) {
 						isActiveDetecting = false;
 					},
 					function (err) {
-						setFailOrderSectDetect(orderId, defaultSectorId);
+						setFailOrderSectDetect(orderId, defaultSectorId, options.isStart);
 						console.log('Err of order set detect coords without streets! ' + err);
 					},
 					connectionTasks);
@@ -554,16 +647,53 @@ function sendAPIRequest(params, success, fail, options) {
 
 			//console.log('333');
 			if (!isDetected && orderId) {
-				setFailOrderSectDetect(orderId, defaultSectorId);
+				setFailOrderSectDetect(orderId, defaultSectorId, options.isStart);
 			} else {
 				isActiveDetecting = false;
 			}
 	}
 
-	function setFailOrderSectDetect(orderId, sector_id) {
-		queryRequest('UPDATE Zakaz SET failed_adr_coords_detect = 1 ' +
-			(sector_id ? (' ,detected_sector = ' + sector_id + ' ') : ' ')
-			+ ' WHERE BOLD_ID = ' + orderId,
+	function checkRouteBuild(orderId) {
+		queryRequest('SELECT ord.BOLD_ID, ord.Adres_vyzova_vvodim, ord.district_id, ord.end_adres, ' +
+			' ord.dest_lat, ord.dest_lon, ord.depr_lat, ord.depr_lon ' +
+			' FROM Zakaz ord WHERE ord.BOLD_ID = ' + orderId + ' AND ord.Zavershyon = 0 ' +
+			' AND ord.adr_manual_set = 1 AND ord.failed_adr_coords_detect = 0 AND ' +
+			' ord.detected_sector > 0 AND LEN(ISNULL(ord.Adres_vyzova_vvodim,\'\')) > 2 AND ' +
+			' ord.failed_end_adr_coords_detect = 0 AND ord.detected_end_sector > 0 AND ' +
+			' LEN(ISNULL(ord.end_adres,\'\')) > 2 AND ord.dest_lat > 0 AND ord.dest_lon > 0 ' +
+			' AND ord.depr_lat > 0 AND ord.depr_lon > 0',
+			function (recordset) {
+				//console.log('111');
+				if (recordset && recordset.recordset &&
+					recordset.recordset.length) {
+					var orderList = recordset.recordset, order, isStart, sendAddress;
+
+					order = orderList[0];
+					buildRoute([
+						{
+							lat: order.depr_lat,
+							lon: order.depr_lon,
+						},
+						{
+							lat: order.dest_lat,
+							lon: order.dest_lon,
+						}
+					], orderId, null);
+				}
+
+			},
+			function (err) {
+				isActiveDetecting = false;
+				console.log('Err of checkRouteBuild geocodeOrderAddresses request! ' + err);
+			},
+			connectionTasks);
+	}
+
+	function setFailOrderSectDetect(orderId, sector_id, isStart) {
+		queryRequest('UPDATE Zakaz SET ' +
+			(isStart ? 'failed_adr_coords_detect' : 'failed_end_adr_coords_detect') + ' = 1 ' +
+			(sector_id ? (' , ' + (isStart ? 'detected_sector' : 'detected_end_sector') +
+			' = ' + sector_id + ' ') : ' ')+ ' WHERE BOLD_ID = ' + orderId,
 			function (recordset) {
 				isActiveDetecting = false;
 			},
@@ -812,7 +942,7 @@ io.sockets.on('connection', function (socket) {
 
 	var connection = createDBConnPool(socketDBConfig);
 
-	function createDBConnPool(connConfig, callBack) {
+	/*function createDBConnPool(connConfig, callBack) {
 		return new sql.ConnectionPool(connConfig, function (err) {
 			// ... error checks
 			if (err) {
@@ -822,7 +952,7 @@ io.sockets.on('connection', function (socket) {
 				callBack && callBack();
 			}
 		});
-	}
+	}*/
 
 	function dependencyExpression(optionsArray) {
 		var dependOptions = {};
@@ -1053,6 +1183,7 @@ io.sockets.on('connection', function (socket) {
 								}
 
 								socketsParams[socket.id]['userId'] = userId;
+								socketsParams[socket.id]['socket'] = socket;
 
 								emitData('orders');
 								console.log('emit drivers');
@@ -1254,9 +1385,6 @@ io.sockets.on('connection', function (socket) {
 
 	function detectCoordsByAddr(data, options) {
 		var parseResult = maps.parseCoordinatesFromGeocodeData(data, options);
-		if (parseResult.emptyAddress) {
-			setFailOrderSectDetect(orderId, defaultSectorId);
-		}
 
 		var pointLat = parseResult.pointLat, pointLon = parseResult.pointLon,
 			withoutStreetPointLat = parseResult.withoutStreetPointLat,
@@ -1276,42 +1404,8 @@ io.sockets.on('connection', function (socket) {
 	}
 
 	socket.on('get-route', function (data) {
-		var routeUrl = 'http://routes.maps.sputnik.ru/osrm/router/viaroute?loc=' +
-			data[0].lat + ',' + data[0].lon + '&loc=' +
-			data[1].lat + ',' + data[1].lon;
-		console.log('routeUrl: ' + routeUrl);
-		sendAPIRequest(
-			{
-				url: routeUrl
-			},
-			buildRouteCallback,
-			null,
-			{
-				'minLat': -300,
-				'minLon': -300,
-				'maxLat': 300,
-				'maxLon': 300,
-				'data': data
-			}
-		);
+		buildRoute(data, -1, socket.id);
 	});
-
-	function buildRouteCallback(data, options) {
-		var i, j;
-		for (j in [0, 1]) {
-			for (i in sectors) {
-				sector = sectors[i];
-				if (maps.isPointInsidePolygon(sector.coords, options.data[j].lon, options.data[j].lat)) {
-					options.data[j].sector_id = i;
-					options.data[j].sector_name = sector.name;
-					break;
-				}
-			}
-		}
-
-		data['custom_options'] = options;
-		socket.emit('get-route-result', data);
-	}
 
 	socket.on('disconnect', function () {
 		socketsParams[socket.id] = {};
