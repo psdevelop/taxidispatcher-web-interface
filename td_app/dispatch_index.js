@@ -525,8 +525,9 @@ function createDBConnPool(connConfig, callBack) {
 							{
 								url: 'http://search.maps.sputnik.ru/search/addr',
 								qs: {
-									q: (order.district_id && order.district_id > 0 && order.geocode_addr && !isStart
+									q: (order.district_id && order.district_id > 0 && order.geocode_addr
 											? order.geocode_addr : defaultGeocodingPrefix) + ',' + sendAddress
+									// && !isStart
 									//blat: bbox.minLat,
 									//blon: bbox.maxLon,
 									//tlat: bbox.maxLat,
@@ -617,6 +618,7 @@ function createDBConnPool(connConfig, callBack) {
 								isActiveDetecting = false;
 							},
 							function (err) {
+								isActiveDetecting = false;
 								setFailOrderSectDetect(orderId, defaultSectorId, options.isStart);
 								console.log('Err of order detected sector assign request! ' + err);
 							},
@@ -625,6 +627,24 @@ function createDBConnPool(connConfig, callBack) {
 						isDetected = true;
 						break;
 					}
+				}
+
+				if (!isDetected) {
+					queryRequest('UPDATE Zakaz SET ' +
+					(isStart ? 'detected_sector' : 'detected_end_sector') + ' = -1 ' +
+					( isStart ? (', adr_detect_lat = \'' + pointLat + '\', adr_detect_lon = \'' +
+						pointLon + '\' ' + ', depr_lat = ' + pointLat + ', depr_lon = ' + pointLon)
+						: (', dest_lat = ' + pointLat + ', dest_lon = ' + pointLon)) +
+					' WHERE BOLD_ID = ' + orderId,
+						function (recordset) {
+							if (enableAutoBuildRoute) {
+								checkRouteBuild(orderId);
+							}
+						},
+						function (err) {
+							console.log('Err of order detected sector assign request! ' + err);
+						},
+						connectionTasks);
 				}
 			} else if (withoStreetLat && withoStreetLon && orderId) {
 				////', adr_detect_lat = \'' + withoStreetLat + '\', adr_detect_lon = \'' + withoStreetLon + '\' ' +
@@ -639,6 +659,7 @@ function createDBConnPool(connConfig, callBack) {
 						isActiveDetecting = false;
 					},
 					function (err) {
+						isActiveDetecting = false;
 						setFailOrderSectDetect(orderId, defaultSectorId, options.isStart);
 						console.log('Err of order set detect coords without streets! ' + err);
 					},
